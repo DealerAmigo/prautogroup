@@ -12,8 +12,13 @@ dotenv.config();
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 async function getSheetsClient() {
   try {
+    const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (!serviceAccount) {
+      console.warn("[Sheets] GOOGLE_SERVICE_ACCOUNT_JSON is missing in environment variables.");
+      return null;
+    }
     const auth = new google.auth.GoogleAuth({
-      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON) : undefined,
+      credentials: JSON.parse(serviceAccount),
       scopes: SCOPES,
     });
     return google.sheets({ version: "v4", auth });

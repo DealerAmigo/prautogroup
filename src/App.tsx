@@ -387,7 +387,7 @@ export default function App() {
         <aside className="w-full md:w-[450px] lg:w-[500px] border-r border-white/10 bg-[#0c0c0c] flex flex-col relative">
           <div 
             ref={scrollAreaRef}
-            className="flex-1 overflow-y-auto px-6 py-8 space-y-6 scroll-smooth"
+            className="flex-1 overflow-y-auto px-4 md:px-6 py-6 md:py-8 space-y-8 scroll-smooth"
           >
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
@@ -558,7 +558,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
           : "bg-rose-600 border-rose-500 rounded-tr-none text-white shadow-[0_10px_20px_rgba(225,29,72,0.2)]"
       )}>
         <div className={cn(
-          "markdown-body leading-relaxed font-round text-base md:text-lg font-medium"
+          "markdown-body leading-relaxed font-round text-lg md:text-xl font-medium"
         )}>
           <ReactMarkdown
             components={{
@@ -644,9 +644,9 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
                       <div className="absolute top-2 right-2 pointer-events-none">
                         <span className="bg-rose-600 text-[10px] font-black px-2 py-1 rounded text-white uppercase shadow-lg">Certificado</span>
                       </div>
-                      <div className="absolute bottom-3 left-3 pointer-events-none">
-                        <p className="text-xs font-black text-rose-500 uppercase tracking-tighter leading-none mb-1">{v.year} {v.make}</p>
-                        <h5 className="text-lg font-black text-white uppercase italic tracking-tighter leading-none">{v.model}</h5>
+                      <div className="absolute bottom-3 left-4 pointer-events-none">
+                        <p className="text-sm font-black text-rose-500 uppercase tracking-tighter leading-none mb-2">{v.year} {v.make}</p>
+                        <h5 className="text-xl font-black text-white uppercase italic tracking-tighter leading-none">{v.model}</h5>
                       </div>
                   </div>
                   <div className="p-3 flex flex-col gap-2 bg-black/20">
