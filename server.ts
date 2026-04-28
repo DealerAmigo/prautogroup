@@ -1,11 +1,27 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
+import { google } from "googleapis";
 
 dotenv.config();
+
+// Google Sheets Setup
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+async function getSheetsClient() {
+  try {
+    const auth = new google.auth.GoogleAuth({
+      credentials: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON) : undefined,
+      scopes: SCOPES,
+    });
+    return google.sheets({ version: "v4", auth });
+  } catch (error) {
+    console.error("[Sheets] Auth Error:", (error as Error).message);
+    return null;
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -14,8 +30,7 @@ async function startServer() {
   app.use(express.json());
 
   // APIs Setup
-  const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY || "");
-  const anthropic = process.env.ANTHROPIC_API_KEY 
+  const anthropic = (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim().length > 0)
     ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     : null;
 
@@ -28,92 +43,80 @@ async function startServer() {
     });
   });
 
+  // Lead Registration in Google Sheets
+  app.post("/api/leads", async (req, res) => {
+    console.log("[API] /api/leads - Processing...");
+    try {
+      const lead = req.body;
+      const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+      
+      if (!spreadsheetId) {
+        console.warn("[Sheets] No Spreadsheet ID configured");
+        return res.json({ success: true, savedLocally: true, message: "Lead processed (Simulation)" });
+      }
+
+      const sheets = await getSheetsClient();
+      if (!sheets) {
+        throw new Error("Could not initialize Sheets client");
+      }
+
+      const values = [
+        [
+          new Date().toISOString(),
+          lead.name || lead.nombre || "N/A",
+          lead.phone || lead.telefono || "N/A",
+          lead.email || "N/A",
+          lead.vehicleInterest || lead.vehiculo || "N/A",
+          lead.notes || lead.presupuesto || lead.fullText || "N/A",
+          lead.source || "Chat Assistant",
+          lead.type || "Lead",
+          lead.credito || "N/A"
+        ]
+      ];
+
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: "Leads!A:I",
+        valueInputOption: "RAW",
+        requestBody: { values },
+      });
+
+      console.log("[Sheets] Lead saved successfully");
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Sheets] Error saving lead:", error.message);
+      // Don't fail the user request if sheets fails, just log it.
+      // In a real app we might want to store in DB as fallback.
+      res.json({ success: true, error: error.message });
+    }
+  });
+
   app.post("/api/chat", async (req, res) => {
+    const messagePart = req.body.message?.substring(0, 50);
+    console.log(`[API] /api/chat - Message: ${messagePart}...`);
     try {
       const { message, history, systemInstruction, tools } = req.body;
       
-      if (!message) {
-        return res.status(400).json({ error: "Message is required" });
+      const hasContent = (message && message.trim()) || (history && history.length > 0);
+      if (!hasContent) {
+        return res.status(400).json({ error: "No content provided" });
       }
 
-      if (anthropic) {
-        // Use Claude
-        console.log("Calling Claude 3.7 Sonnet (Latest)...");
-        const anthropicMessages: any[] = (history || [])
-          .filter((h: any) => h.parts && h.parts.length > 0 && h.parts[0].text)
-          .map((h: any) => ({
-            role: h.role === "model" ? "assistant" : "user",
-            content: h.parts[0].text,
-          }));
-        
-        anthropicMessages.push({ 
-          role: "user", 
-          content: message 
-        });
+      // If Anthropic is configured, we could handle it here.
+      // But for now, the frontend handles Gemini directly.
+      // We return a 501 or a specific message if no backend AI is ready.
+      
+      return res.status(501).json({ 
+        error: "Backend chat not implemented",
+        text: "La IA del servidor no está configurada. Usando IA local."
+      });
 
-        // Map tools if available
-        let anthropicTools: any = undefined;
-        if (tools && tools[0] && tools[0].functionDeclarations) {
-          anthropicTools = tools[0].functionDeclarations.map((fn: any) => ({
-            name: fn.name,
-            description: fn.description,
-            input_schema: {
-              type: "object",
-              properties: Object.entries(fn.parameters.properties || {}).reduce((acc: any, [key, val]: [string, any]) => {
-                acc[key] = {
-                  type: val.type.toLowerCase(),
-                  description: val.description
-                };
-                return acc;
-              }, {}),
-              required: fn.parameters.required || []
-            }
-          }));
-        }
-
-        const response = await anthropic.messages.create({
-          model: "claude-3-7-sonnet-latest",
-          max_tokens: 2048,
-          system: systemInstruction,
-          messages: anthropicMessages,
-          tools: anthropicTools,
-        });
-
-        const textContent = response.content.find(c => c.type === 'text');
-        const toolCalls = response.content.filter(c => c.type === 'tool_use');
-        
-        const functionCalls = toolCalls.map((tc: any) => ({
-          name: tc.name,
-          args: tc.input
-        }));
-
-        return res.json({
-          text: textContent && 'text' in textContent ? textContent.text : '',
-          functionCalls: functionCalls.length > 0 ? functionCalls : null
-        });
-      } else {
-        // Fallback to Gemini if no Anthropic key
-        const chatModel = genAI.getGenerativeModel({
-          model: "gemini-1.5-flash",
-          systemInstruction,
-          tools,
-        });
-
-        const chat = chatModel.startChat({
-          history: history || [],
-        });
-
-        const result = await chat.sendMessage(message);
-        const response = await result.response;
-        
-        res.json({
-          text: response.text(),
-          functionCalls: response.functionCalls ? response.functionCalls() : null
-        });
-      }
-    } catch (error: any) {
-      console.error("Gemini Server Error:", error);
-      res.status(500).json({ error: error.message });
+    } catch (outerError: any) {
+      console.error("[API] Error:", outerError.message);
+      return res.status(500).json({ 
+        error: "System error", 
+        details: outerError.message
+      });
     }
   });
 

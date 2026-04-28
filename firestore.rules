@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // Leads collection
+    match /leads/{leadId} {
+      allow create: if true; // Allow anonymous lead capture
+      allow read: if request.auth.token.email == 'willquisnos@gmail.com' && request.auth.token.email_verified == true;
+      allow update, delete: if false; // Secure customer data
+    }
+
+    // Chats collection
+    match /chats/{chatId} {
+      allow read, write: if isValidId(chatId); // Allow session persistence by ID
+    }
+  }
+}

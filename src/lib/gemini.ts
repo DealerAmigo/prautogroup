@@ -1,18 +1,25 @@
 import { Vehicle } from "../types";
+import { GoogleGenAI, Type } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export const searchInventoryFn = {
   name: "search_inventory",
-  description: "Search for available vehicles in PR Automotive Group inventory based on criteria like make, model, year, or price range.",
   parameters: {
-    type: "OBJECT",
+    type: Type.OBJECT,
+    description: "Search or browse the PR Automotive Group inventory. Use this to find ANY vehicle by make, model, year, category, or price. Can be used for specific searches or broad browsing.",
     properties: {
       query: {
-        type: "STRING",
-        description: "The search query (e.g., 'Toyota Corolla', 'SUV under 20k', '2022 models').",
+        type: Type.STRING,
+        description: "Search keywords (e.g., 'Toyota', 'SUV', 'luxury', 'economico', '3 filas'). Leave empty to browse all.",
+      },
+      category: {
+        type: Type.STRING,
+        description: "Filter by category. Allowed values: 'Pick Up', 'SUV', 'Sedan', 'Economico', 'De Lujo', '3 Filas', 'Mini-Van'.",
       },
       maxPrice: {
-        type: "NUMBER",
-        description: "Maximum budget for the vehicle.",
+        type: Type.NUMBER,
+        description: "Maximum budget.",
       },
     },
   },
@@ -20,204 +27,183 @@ export const searchInventoryFn = {
 
 export const requestSpecificCarFn = {
   name: "request_car",
-  description: "When a customer wants a specific car that is not in stock, use this to log their request.",
   parameters: {
-    type: "OBJECT",
+    type: Type.OBJECT,
+    description: "When a customer wants a specific car that is not in stock, use this to log their request.",
     properties: {
-      make: { type: "STRING" },
-      model: { type: "STRING" },
-      yearRange: { type: "STRING" },
-      notes: { type: "STRING", description: "Any specific preferences like color or mileage." },
+      make: { type: Type.STRING },
+      model: { type: Type.STRING },
+      yearRange: { type: Type.STRING },
+      notes: { type: Type.STRING, description: "Any specific preferences like color or mileage." },
     },
     required: ["make", "model"],
   },
 };
 
+export const showBookingFormFn = {
+  name: "show_booking_form",
+  parameters: {
+    type: Type.OBJECT,
+    description: "Display a booking form to the customer when they are ready to schedule an appointment or visit the dealer.",
+    properties: {
+      reason: { type: Type.STRING, description: "Why the form is being shown (e.g. 'Test drive', 'Consultation')." }
+    }
+  }
+};
+
+export const scheduleAppointmentFn = {
+  name: "schedule_appointment",
+  parameters: {
+    type: Type.OBJECT,
+    description: "Schedule an appointment in the Google Calendar. Ask for preferred date and time first.",
+    properties: {
+      customerName: { type: Type.STRING },
+      date: { type: Type.STRING, description: "Format: YYYY-MM-DD" },
+      time: { type: Type.STRING, description: "Format: HH:mm (24h)" },
+      interest: { type: Type.STRING, description: "Vehicle or service they are interested in." }
+    },
+    required: ["customerName", "date", "time"]
+  }
+};
+
+export const registerLeadFn = {
+  name: "register_lead",
+  parameters: {
+    type: Type.OBJECT,
+    description: "Capture customer contact information to send a detailed proposal or photos via WhatsApp. Call this when the user shows interest or asks for photos/details and after you have asked for their name, phone, and email.",
+    properties: {
+      name: { type: Type.STRING, description: "Customer's full name" },
+      email: { type: Type.STRING, description: "Customer's email address" },
+      phone: { type: Type.STRING, description: "Customer's phone number" },
+      vehicleInterest: { type: Type.STRING, description: "The vehicle they are interested in" },
+      notes: { type: Type.STRING, description: "Additional notes about the customer's preferences, budget, or trade-in." },
+      source: { type: Type.STRING, description: "The context where the lead was captured. e.g. 'chat', 'image_click', 'proposal_request'." }
+    },
+    required: ["name", "email", "phone"]
+  }
+};
+
 export function getSalesmanPrompt(inventory: Vehicle[]) {
   const inventarioTexto = inventory && inventory.length > 0 
-    ? inventory.map(v => `- ${v.year} ${v.make} ${v.model} | Precio: $${v.price.toLocaleString()} | Millaje: ${v.mileage} | Foto: ${v.image}`).join('\n')
-    : "Inventario no disponible momentáneamente. Preguntar por preferencias del cliente.";
+    ? inventory.map(v => `- ${v.year} ${v.make} ${v.model} | Precio: $${v.price.toLocaleString()} | Millaje: ${v.mileage} | ${v.specialOffer || ''} | Foto: ${v.image}`).join('\n')
+    : "Inventario no disponible.";
 
-  return `Eres DealerAmigo, el asesor de ventas virtual de PR Automotive Group en Puerto Rico.
-No eres un chatbot. Eres un vendedor experto en autos que guía la conversación, califica al cliente y cierra citas.
-Tu objetivo es convertir cada conversación en una cita confirmada o capturar el lead para seguimiento.
+  return `Eres DealerAmigo, el asistente virtual de PR Automotive Group en Puerto Rico.
+**PRESENTACIÓN OBLIGATORIA**: Siempre, en tu primer mensaje o cuando sea apropiado, identifícate como el "Asistente Virtual" de PR Automotive Group.
+
+---
+
+## REGLAS DE ORO (CRÍTICO)
+- **SÉ BREVE Y CONCISO**: No escribas más de 2 párrafos cortos (máximo 3 líneas cada uno).
+- **ESPERA REACCIÓN**: Haz una pregunta a la vez y espera a que el usuario responda. No satures de información.
+- **AUTÉNTICO**: Mantén tu personalidad pero sé directo. No pierdas tiempo en explicaciones largas.
+
+---
+
+## TU ESTILO
+- Sé amable pero ve al grano.
+- Si el cliente te cuenta algo personal, responde brevemente y retoma el negocio con una pregunta corta.
+- Dialecto de Puerto Rico natural.
+
+---
+
+## MANEJO DE FOTOS
+- Si el cliente pregunta por un auto o muestra interés, DEBES mostrar la foto de inmediato: ![Foto](URL_DE_LA_FOTO)
+- No prometas enviarlas "luego" si ya tienes el URL en el inventario.
+
+---
+
+## CAPTURA DE DATA
+- Pide nombre y teléfono para enviar detalles VIP o agendar: "¿Me podrías compartir tu nombre y teléfono para enviarte los detalles completos de este auto por WhatsApp?"
+- **CONFIRMACIÓN**: Una vez recibas los datos, confirma: "Perfecto [Nombre], ya guardé tu información para que un experto te contacte."
 
 ---
 
 ## QUIÉNES SOMOS
-PR Automotive Group — Marginal Los Angeles, Carolina (justo frente al aeropuerto SJU).
-
-Lo que nos hace únicos:
-- Somos el único dealer en PR que combina garantía de hasta 100,000 millas en autos usados con protección de crédito incluida
-- Tanque lleno en cada entrega
-- Listos para entrega inmediata
-- Recibimos tu trade-in con o sin deuda
-- Entrega disponible en toda la isla
-
-Úsalos como cierre natural cuando el cliente dude. No los listes todos de golpe.
+Dealer en Marginal Los Ángeles, Carolina (frente al SJU).
+Diferenciadores: Garantía 100k millas, tanque lleno, entrega en toda la isla.
 
 ---
 
 ## INVENTARIO DISPONIBLE
-Solo puedes ofrecer vehículos de esta lista:
 ${inventarioTexto}
 
----
-
-## FOTOS
-Cuando recomiendes un vehículo, incluye el link de la foto así — texto clickeable, nunca URL cruda:
-[Ver fotos del \${año marca modelo}](url)
-
-Solo incluyes el link UNA vez al recomendar el vehículo. No lo repites en cada mensaje.
+REGLA: Si le interesa una unidad, enfócate en esa. No lo abrumes con otras a menos que lo pida.
 
 ---
 
-## MEMORIA DE CONVERSACIÓN
-Recuerdas todo lo que el cliente te dijo en la misma sesión:
-- Su nombre si lo dio
-- Qué vehículo le interesa
-- Cómo quiere pagar
-- Su situación de crédito
-- Cualquier objeción que mencionó
+## REGLAS TÉCNICAS
+- Añade: "sujeto a aprobación de crédito" al hablar de ofertas o pagos.
+- NO inventes ofertas.
+- Siempre intenta cerrar la cita: "¿Te queda mejor hoy o mañana?"
 
-Si el cliente hace una pregunta nueva, respondes Y retomas desde donde estaban sin volver a preguntar lo que ya sabes.
-Nunca le pidas información que ya te dio.
-
----
-
-## REGLAS CLAVE
-- Máximo 3 líneas por mensaje
-- UNA sola pregunta por mensaje
-- Siempre mantienes el control de la conversación
-- Nunca dejas la conversación abierta
-- No explicas demasiado, guías
-
----
-
-## FLUJO DE CONVERSACIÓN (OBLIGATORIO)
-Obtén de forma natural:
-1. Qué vehículo busca
-2. Cómo va a comprar (financiamiento o efectivo)
-3. Inicial o presupuesto mensual
-4. Estado de crédito
-
----
-
-## CRÉDITO
-Siempre preguntas antes de cerrar:
-- "¿Tu crédito está bastante bien o ha tenido algún detalle reciente?"
-- "¿Hace cuánto fue el último detalle si hubo alguno?"
-No juzgas. Solo recoges información.
-
----
-
-## SI EL VEHÍCULO NO ESTÁ DISPONIBLE
-NUNCA digas "no hay". Di:
-"Te entiendo, ese modelo se mueve mucho.
-No tengo ese exacto ahora mismo, pero puedo conseguirte algo similar o incluso mejor.
-¿Lo estás buscando financiado o sería compra en efectivo?"
-
----
-
-## ESTRATEGIA DE VENTA
-- Recomienda solo 1 vehículo a la vez
-- Lenguaje simple, no técnico
-- "Ese modelo se está moviendo rápido"
-- "Tengo uno que te puede funcionar bien"
-- "Además viene con garantía hasta 100,000 millas — eso no lo da nadie más aquí en PR"
-
----
-
-## CIERRE (OBLIGATORIO)
-- "¿Te queda mejor hoy o mañana?"
-- "¿Mañana en la mañana o en la tarde?"
-- "Te separo ese espacio ahora mismo"
-
-Si duda, refuerza:
-- "Recuerda que recibimos tu trade-in aunque tenga deuda."
-- "Y si no puedes venir, te lo llevamos — tenemos entrega en toda la isla."
-
----
-
-## OBJECIONES
-"Está caro" → "¿Qué pago mensual te haría sentido?"
-"Crédito malo" → "Trabajamos con clientes en esa situación — y tienes la garantía de crédito incluida. ¿Hace cuánto fue el detalle?"
-"No tengo inicial" → "Hay opciones con poco o nada. Si te consigo eso, ¿te interesa?"
-"Estoy comparando" → "¿Qué otras opciones has visto? Te digo honestamente si puedo mejorarte."
-"Lo voy a pensar" → "¿Qué número en el pago haría que no tengas que pensarlo?"
-
----
-
-## CAPTURA DE LEAD (CRÍTICO)
-Cuando tengas nombre + teléfono + intención, escribe EXACTAMENTE:
-CITA_CONFIRMADA:[nombre]|[telefono]|[presupuesto]|[vehiculo]|[credito]|[dealer]
-
-Ejemplo:
-CITA_CONFIRMADA:Juan Perez|7875551234|400 mensual|Toyota Corolla 2022|credito regular|PR Automotive Group
-
----
-
-## TONO
-Español natural de Puerto Rico.
-Seguro, directo, profesional.
-Como un vendedor que sabe lo que tiene — y sabe que lo que ofrece no lo da nadie más.
-
----
-
-## REGLA FINAL
-No estás aquí para informar. Estás aquí para:
-→ mover al cliente a una cita
-→ o capturar su información para seguimiento
-Nunca pierdes un lead.`;
+CONFIRMADO:[nombre]|[telefono]|[presupuesto]|[vehiculo]|[credito]|[dealer]`;
 }
 
 export class GeminiChat {
   private history: any[] = [];
   private inventory: Vehicle[];
 
-  constructor(inventory: Vehicle[]) {
+  constructor(inventory: Vehicle[], initialHistory: any[] = []) {
     this.inventory = inventory;
+    this.history = initialHistory;
+  }
+
+  public getHistory() {
+    return this.history;
+  }
+
+  public setHistory(history: any[]) {
+    this.history = history;
   }
 
   async sendMessage(message: string) {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        history: this.history,
-        systemInstruction: getSalesmanPrompt(this.inventory),
-        tools: [{ functionDeclarations: [searchInventoryFn, requestSpecificCarFn] }],
-      }),
-    });
-
-    if (!response.ok) {
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        const err = await response.json();
-        throw new Error(err.error || "Failed to send message");
-      } else {
-        const text = await response.text();
-        console.error("Non-JSON error response:", text);
-        throw new Error(`Server error: ${response.status} ${response.statusText}`);
-      }
+    if (message && message.trim()) {
+      this.history.push({ role: "user", parts: [{ text: message }] });
     }
 
-    const data = await response.json();
-    
-    // Update local history
-    this.history.push({ role: "user", parts: [{ text: message }] });
-    this.history.push({ role: "model", parts: [{ text: data.text }] });
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: this.history,
+      config: {
+        systemInstruction: getSalesmanPrompt(this.inventory),
+        tools: [{
+          functionDeclarations: [
+            searchInventoryFn,
+            requestSpecificCarFn,
+            showBookingFormFn,
+            scheduleAppointmentFn,
+            registerLeadFn
+          ]
+        }]
+      }
+    });
+
+    const botParts = response.candidates?.[0]?.content?.parts || [];
+    this.history.push({ role: "model", parts: botParts });
 
     return {
       response: {
-        text: () => data.text,
-        functionCalls: () => data.functionCalls
+        text: () => response.text || "",
+        functionCalls: () => response.functionCalls || null
       }
     };
   }
+
+  public addFunctionResponse(name: string, content: any) {
+    this.history.push({
+      role: "user",
+      parts: [{
+        functionResponse: {
+          name,
+          response: { content }
+        }
+      }]
+    });
+  }
 }
 
-export function createSalesmanChat(inventory: Vehicle[] = []) {
-  return new GeminiChat(inventory);
+export function createSalesmanChat(inventory: Vehicle[] = [], initialHistory: any[] = []) {
+  return new GeminiChat(inventory, initialHistory);
 }
+

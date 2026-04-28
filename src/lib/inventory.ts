@@ -13,7 +13,10 @@ const MOCK_INVENTORY: Vehicle[] = [
     mileage: "12,000 mi",
     isAvailable: true,
     exteriorColor: "Blanco",
-    transmission: "Automático"
+    transmission: "Automático",
+    category: "Sedan",
+    mpg: "30 City / 38 Highway",
+    specialOffer: "Garantía extendida incluida"
   },
   {
     id: "2",
@@ -26,7 +29,10 @@ const MOCK_INVENTORY: Vehicle[] = [
     mileage: "25,000 mi",
     isAvailable: true,
     exteriorColor: "Gris",
-    transmission: "4x4 Automático"
+    transmission: "4x4 Automático",
+    category: "SUV",
+    mpg: "17 City / 23 Highway",
+    specialOffer: "Accesorios off-road con 20% descuento"
   },
   {
     id: "3",
@@ -39,7 +45,106 @@ const MOCK_INVENTORY: Vehicle[] = [
     mileage: "18,000 mi",
     isAvailable: true,
     exteriorColor: "Rojo",
-    transmission: "Manual"
+    transmission: "Manual",
+    category: "Sedan",
+    mpg: "22 City / 28 Highway",
+    specialOffer: "Mantenimiento gratis por 1 año"
+  },
+  {
+    id: "4",
+    make: "Honda",
+    model: "Odyssey",
+    year: 2022,
+    price: 36900,
+    image: "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=800",
+    description: "Espaciosa minivan con 3 filas de asientos. Perfecta para 7 pasajeros. Cámara de reversa y sistema premium.",
+    mileage: "21,000 mi",
+    isAvailable: true,
+    exteriorColor: "Azul",
+    transmission: "Automático",
+    category: "Mini-Van",
+    mpg: "19 City / 28 Highway",
+    specialOffer: "Ideal para familias"
+  },
+  {
+    id: "5",
+    make: "Hyundai",
+    model: "Palisade",
+    year: 2023,
+    price: 48500,
+    image: "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800",
+    description: "SUV de lujo con 3 filas de asientos reales. Capacidad para 8 pasajeros, tecnología H-TRAC y garantía de fábrica.",
+    mileage: "5,400 mi",
+    isAvailable: true,
+    exteriorColor: "Gris",
+    transmission: "Automático",
+    category: "3 Filas",
+    mpg: "19 City / 26 Highway",
+    specialOffer: "Tecnología H-TRAC incluida"
+  },
+  {
+    id: "6",
+    make: "Ford",
+    model: "F-150 Lariat",
+    year: 2022,
+    price: 52000,
+    image: "https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&q=80&w=800",
+    description: "Pick Up potente con tecnología avanzada y poco millaje.",
+    mileage: "15,000 mi",
+    isAvailable: true,
+    exteriorColor: "Negro",
+    transmission: "4x4",
+    category: "Pick Up",
+    mpg: "17 City / 23 Highway",
+    specialOffer: "Protector de caja gratis"
+  },
+  {
+    id: "7",
+    make: "Genesis",
+    model: "GV80",
+    year: 2024,
+    price: 75000,
+    image: "https://images.unsplash.com/photo-1617469165786-8007eda3caa7?auto=format&fit=crop&q=80&w=800",
+    description: "SUV de lujo con acabados premium y 3 filas de asientos.",
+    mileage: "1,200 mi",
+    isAvailable: true,
+    exteriorColor: "Blanco",
+    transmission: "AWD",
+    category: "De Lujo",
+    mpg: "18 City / 24 Highway",
+    specialOffer: "Concierge service por 2 años"
+  },
+  {
+    id: "8",
+    make: "Toyota",
+    model: "Yaris",
+    year: 2022,
+    price: 21000,
+    image: "https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&q=80&w=800",
+    description: "Sedan compacto y económico, ideal para el ahorro de gasolina.",
+    mileage: "10,000 mi",
+    isAvailable: true,
+    exteriorColor: "Plata",
+    transmission: "Automático",
+    category: "Economico",
+    mpg: "32 City / 41 Highway",
+    specialOffer: "Bono de $500 para trade-in"
+  },
+  {
+    id: "9",
+    make: "Kia",
+    model: "Carnival",
+    year: 2024,
+    price: 30995,
+    image: "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&q=80&w=800",
+    description: "Multipurpose vehicle con estilo de SUV. Espacio masivo y tecnología de punta.",
+    mileage: "5,000 mi",
+    isAvailable: true,
+    exteriorColor: "Blanco",
+    transmission: "Automático",
+    category: "Mini-Van",
+    mpg: "19 City / 26 Highway",
+    specialOffer: "0% APR por 36 meses para clientes cualificados"
   }
 ];
 
@@ -64,15 +169,32 @@ export async function getInventory(): Promise<Vehicle[]> {
     if (rows.length < 2) return MOCK_INVENTORY;
 
     // Basic CSV Parser (assuming simple mapping for now)
-    // Expects headers like: Make, Model, Year, Price, Image, Description, Mileage
+    // Expects headers like: Make, Model, Year, Price, Image, Description, Mileage, Clase
     const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
     
     const inventory = rows.slice(1).map((row, index) => {
-      // Split by comma but handle cases where values might have commas (quoted)
-      const values = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || row.split(',');
+      // Robust CSV split that respects quotes but allows spaces in unquoted fields
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < row.length; i++) {
+        const char = row[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim());
+
       const getVal = (key: string) => {
-        const i = headers.findIndex(h => h.trim().toLowerCase().includes(key.toLowerCase()));
-        return i !== -1 ? values[i]?.trim().replace(/^"|"$/g, '') : null;
+        // Find index by checking if the header (cleaned) contains our key
+        const i = headers.findIndex(h => h.replace(/\s+/g, '').includes(key.toLowerCase().replace(/\s+/g, '')));
+        return i !== -1 ? values[i]?.replace(/^"|"$/g, '').trim() : null;
       };
 
       const make = getVal('marca') || "PR Group";
@@ -83,7 +205,10 @@ export async function getInventory(): Promise<Vehicle[]> {
       const year = parseInt(getVal('año') || "2024");
       const image = getVal('foto') || "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800";
       const mileage = getVal('millaje') || "Entrega inmediata";
-      const desc = getVal('descripcion') || getVal('clase') || "";
+      const category = getVal('clase') || "";
+      const desc = getVal('descripcion') || "";
+      const mpg = getVal('mpg') || "";
+      const specialOffer = getVal('oferta') || getVal('special') || getVal('promo') || getVal('oferta especial') || "";
 
       return {
         id: String(index),
@@ -92,24 +217,110 @@ export async function getInventory(): Promise<Vehicle[]> {
         year,
         price,
         image,
-        description: desc || "Unidad certificada con garantía.",
+        description: desc || `${category} - Unidad certificada con garantía.`,
         mileage,
+        category,
+        mpg,
+        specialOffer,
         isAvailable: true
       };
     });
 
     return inventory.length > 0 ? inventory : MOCK_INVENTORY;
   } catch (error) {
-    console.error("Error loading inventory:", error);
+    console.error("Error loading inventory from URL:", error);
     return MOCK_INVENTORY;
   }
 }
 
-export function searchVehicles(vehicles: Vehicle[], query: string): Vehicle[] {
-  const q = query.toLowerCase();
-  return vehicles.filter(v => 
-    v.make.toLowerCase().includes(q) || 
-    v.model.toLowerCase().includes(q) || 
-    v.description.toLowerCase().includes(q)
-  );
+export interface SearchFilters {
+  query?: string;
+  category?: string;
+  maxPrice?: number;
+}
+
+export function searchVehicles(vehicles: Vehicle[], filters: string | SearchFilters): Vehicle[] {
+  let q = '';
+  let categoryFilter = '';
+  let maxPriceFilter = 0;
+
+  if (typeof filters === 'string') {
+    q = filters.toLowerCase().trim();
+  } else {
+    q = (filters.query || '').toLowerCase().trim();
+    categoryFilter = (filters.category || '').toLowerCase().trim();
+    maxPriceFilter = filters.maxPrice || 0;
+  }
+  
+  // If no filters at all, return default browsing view
+  if (!q && !categoryFilter && !maxPriceFilter) {
+    return [...vehicles].sort((a, b) => b.year - a.year).slice(0, 10);
+  }
+  
+  // Direct category synonyms for semantic mapping
+  const isPickupQuery = q === 'pickup' || q === 'pick up' || q === 'pick-up' || q === 'guagua' || categoryFilter === 'pick up';
+  const isEconomicQuery = q.includes('economico') || q.includes('barato') || q.includes('presupuesto bajo') || q.includes('bajo');
+  const isLuxuryQuery = q.includes('lujo') || q.includes('luxury') || q.includes('caro') || q.includes('premium') || q.includes('gama alta') || categoryFilter === 'luxury' || categoryFilter === 'de lujo';
+  const isFamilyQuery = q.includes('3 filas') || q.includes('7 pasajeros') || q.includes('familia') || q.includes('fiel') || q.includes('3 rows') || categoryFilter === '3 filas';
+  const isMinivanQuery = q.includes('minivan') || q.includes('mini-van') || categoryFilter === 'mini-van';
+  
+  return vehicles.filter(v => {
+    const vCat = (v.category?.toLowerCase() || "");
+    const vMake = v.make.toLowerCase();
+    const vModel = v.model.toLowerCase();
+    const vDesc = v.description.toLowerCase();
+
+    // Search Logic Optimization for specified classes
+    if (categoryFilter && categoryFilter !== 'all' && categoryFilter !== 'any') {
+      const matchCat = vCat.includes(categoryFilter) || (categoryFilter === '3 filas' && (vCat === '3 filas' || vDesc.includes('3 filas'))) || (categoryFilter === 'mini-van' && vCat.includes('van'));
+      if (matchCat) return true;
+      
+      // Semantic fallbacks for category filter
+      if (isPickupQuery && (vCat.includes('pick up') || vCat.includes('pickup'))) return true;
+      if (isEconomicQuery && (v.price < 35000 || vCat.includes('economico'))) return true;
+      if (isLuxuryQuery && (v.price > 50000 || vCat.includes('lujo') || vCat.includes('luxury') || vCat.includes('de lujo'))) return true;
+      if (isFamilyQuery && (vCat.includes('3 filas') || vDesc.includes('3 filas'))) return true;
+      if (isMinivanQuery && (vCat.includes('van') || vCat.includes('minivan'))) return true;
+      
+      if (!q) return false;
+    }
+
+    // 2. Max Price Filter
+    if (maxPriceFilter > 0) {
+      if (v.price > maxPriceFilter) return false;
+    }
+
+    // 3. Keyword / Query Match
+    if (q) {
+      const hayMatchEnTexto = vMake.includes(q) || vModel.includes(q) || vDesc.includes(q);
+      const hayMatchEnCategoria = vCat.includes(q);
+      
+      // Special Pickup match
+      const matchEspecialPickup = isPickupQuery && (vCat.includes('pick up') || vCat.includes('pickup'));
+
+      // Semantic match: Economico
+      const matchEconomico = isEconomicQuery && (v.price < 35000 || vCat.includes('compact') || vCat.includes('mini-van') || vCat.includes('economico'));
+
+      // Semantic match: Lujo
+      const matchLujo = isLuxuryQuery && (v.price > 50000 || vCat.includes('lujo') || vCat.includes('luxury') || vCat.includes('prestige') || vCat.includes('de lujo'));
+
+      // Semantic match: Family (3 rows)
+      const matchFamilia = isFamilyQuery && (
+        vDesc.includes('3 filas') || 
+        vDesc.includes('pasajeros') || 
+        vDesc.includes('7') ||
+        vDesc.includes('asientos') ||
+        vCat.includes('van') || 
+        vCat.includes('minivan') ||
+        vCat.includes('3 filas') ||
+        (vCat.includes('suv') && (v.model.toLowerCase().includes('gv80') || v.model.toLowerCase().includes('santa fe') || v.model.toLowerCase().includes('highlander') || v.model.toLowerCase().includes('pilot')))
+      );
+
+      if (!(hayMatchEnTexto || hayMatchEnCategoria || matchEspecialPickup || matchEconomico || matchLujo || matchFamilia)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
 }
