@@ -3,29 +3,39 @@ import { getFirestore, collection, addDoc, serverTimestamp, doc, setDoc, query, 
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyDdjXbkUTUaTk4r-rmYJDVfOEgzs-99ooE",
+  authDomain: "ai-studio-applet-webapp-3d48e.firebaseapp.com",
+  projectId: "ai-studio-applet-webapp-3d48e",
+  storageBucket: "ai-studio-applet-webapp-3d48e.firebasestorage.app",
+  messagingSenderId: "69135008810",
+  appId: "1:69135008810:web:071fbb793481f1a52caf53"
 };
 
-// Simple diagnostic check
-if (!firebaseConfig.apiKey) {
-  console.warn("Firebase API Key is missing. Please add VITE_FIREBASE_API_KEY to the app settings.");
+let app: any;
+let db: any;
+let auth: any;
+let googleProvider: any;
+
+try {
+  app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  auth = getAuth(app);
+  googleProvider = new GoogleAuthProvider();
+} catch (e) {
+  console.error("Firebase init error:", e);
 }
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)');
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+export { db, auth, googleProvider };
 
 function sanitizeData(data: any): any {
   return JSON.parse(JSON.stringify(data, (_, value) => (value === undefined ? null : value)));
 }
 
 export function subscribeToLeads(callback: (leads: any[]) => void) {
+  if (!db) {
+    console.error("Firebase no está inicializado.");
+    return () => {};
+  }
   const leadsRef = collection(db, 'leads');
   const q = query(leadsRef, orderBy('createdAt', 'desc'));
   
@@ -43,6 +53,9 @@ export function subscribeToLeads(callback: (leads: any[]) => void) {
 export async function saveLead(leadData: any) {
   try {
     // 1. Save to Firebase
+    if (!db) {
+      throw new Error("Firebase no configurado");
+    }
     const leadsRef = collection(db, 'leads');
     await addDoc(leadsRef, {
       ...sanitizeData(leadData),
@@ -69,6 +82,7 @@ export async function saveLead(leadData: any) {
 
 export async function saveChatSession(userId: string, messages: any[]) {
   try {
+    if (!db) return;
     const chatRef = doc(db, 'chats', userId);
     await setDoc(chatRef, {
       userId,
@@ -81,5 +95,9 @@ export async function saveChatSession(userId: string, messages: any[]) {
 }
 
 export async function loginWithGoogle() {
+  if (!auth) {
+    alert("Error de conexión con Firebase. Por favor intenta refrescar la página.");
+    return;
+  }
   return signInWithPopup(auth, googleProvider);
 }
