@@ -2,14 +2,12 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
-import { google } from "googleapis";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
-// AI Setup
-const aiKey = process.env.GEMINI_API_KEY;
-const ai = aiKey ? new GoogleGenerativeAI(aiKey) : null;
+// Initialize Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 // Google Sheets & Apps Script URLs
 const INVENTORY_CSV_URL = "https://docs.google.com/spreadsheets/d/1eP8zbvY5Ifsno2g2AsJoc5YV4q-PxNxzQaM6SSNy-dk/export?format=csv";
@@ -24,66 +22,59 @@ async function startServer() {
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ 
-      status: "ok", 
-      geminiConfigured: !!ai
+      status: "ok"
     });
   });
 
-  // Fetch Inventory directly via CSV (More reliable than Apps Script for reading large data)
+  // Gemini Chat Proxy
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const { message, history, systemInstruction, tools } = req.body;
+      
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("Missing GEMINI_API_KEY in environment variables.");
+      }
+
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-1.5-flash",
+        systemInstruction: systemInstruction
+      });
+
+      const chat = model.startChat({
+        history: history || [],
+        tools: tools || [],
+      });
+
+      const result = await chat.sendMessage(message);
+      const response = await result.response;
+      
+      res.json({
+        text: response.text(),
+        functionCalls: response.functionCalls() || []
+      });
+    } catch (error: any) {
+      console.error("[Gemini API Error]:", error.message);
+      res.status(500).json({ 
+        error: "Internal Server Error during AI processing",
+        details: error.message 
+      });
+    }
+  });
+
+  // Fetch Inventory directly via CSV
   app.get("/api/inventory", async (req, res) => {
     try {
       const response = await fetch(INVENTORY_CSV_URL);
       if (!response.ok) throw new Error("No se pudo acceder al CSV de la hoja.");
       const csvText = await response.text();
-      res.send(csvText); // Send raw CSV to be parsed by the client
+      res.send(csvText); 
     } catch (error: any) {
       console.error("[Inventory Error]:", error.message);
       res.status(500).json({ error: "Failed to load inventory" });
     }
   });
 
-  app.post("/api/chat", async (req, res) => {
-    try {
-      if (!ai) {
-        throw new Error("GEMINI_API_KEY is not configured on the server.");
-      }
-
-      const { message, history, systemInstruction, tools } = req.body;
-      const model = ai.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        systemInstruction,
-      });
-
-      const chat = model.startChat({
-        history: history.map((h: any) => ({
-          role: h.role === "model" ? "model" : "user",
-          parts: h.parts.map((p: any) => {
-            if (p.functionCall) return { functionCall: p.functionCall };
-            if (p.functionResponse) return { functionResponse: p.functionResponse };
-            return { text: p.text };
-          }),
-        })),
-        tools: tools ? [{ functionDeclarations: tools }] : undefined,
-      });
-
-      const result = await chat.sendMessage(message || "");
-      const response = result.response;
-      
-      const candidates = response.candidates || [];
-      const parts = candidates[0]?.content?.parts || [];
-
-      return res.json({
-        text: response.text(),
-        functionCalls: parts.filter(p => p.functionCall).map(p => p.functionCall)
-      });
-
-    } catch (error: any) {
-      console.error("[API Chat Error]:", error);
-      res.status(500).json({ error: "AI processing failed", details: error.message });
-    }
-  });
-
-  // Lead Registration via Apps Script (Forwarding exactly what Apps Script expects)
+  // Lead Registration via Apps Script
   app.post("/api/leads", async (req, res) => {
     try {
       const response = await fetch(APPS_SCRIPT_URL, {
@@ -93,8 +84,14 @@ async function startServer() {
         redirect: "follow"
       });
 
-      const data = await response.json();
-      res.json(data);
+      // El App Script a veces no devuelve JSON válido o redirecciona
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch (e) {
+        res.json({ success: true, message: "Lead enviado (respuesta no-JSON)" });
+      }
     } catch (error: any) {
       console.error("[Apps Script Error] saving lead:", error.message);
       res.json({ success: false, error: error.message });

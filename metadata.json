@@ -1,6 +1,11 @@
 {
-  "name": "PR Automotive Group",
-  "description": "Premium virtual dealership and inventory salesperson for PR Automotive Group. Securely handles customer data and real-time AI interactions.",
+  "name": "PR Automotive Group | IA Salesman",
+  "description": "Plataforma inteligente de ventas de autos para PR Automotive Group. DealerAmigo AI gestiona inventario, captación de leads y citas en tiempo real con garantía premium de 100k millas.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "AI-Powered Sales Concierge",
+    "Real-time Inventory Management",
+    "Automated Lead Gen & CRM",
+    "Appointment Scheduling"
+  ]
 }

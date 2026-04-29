@@ -35,6 +35,7 @@ export default function App() {
   const [isLoadingInventory, setIsLoadingInventory] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isAdminView, setIsAdminView] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'inventory'>('chat');
   
   const chatRef = useRef<any>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -86,7 +87,7 @@ export default function App() {
             {
               id: '1',
               role: 'assistant',
-              content: '¡Hola! Soy **DealerAmigo**. ¿Buscas algún modelo en específico o quieres ver nuestro inventario hoy?\n\n*Tip: Puedes hacer clic en los vehículos que te muestre para ver más detalles.*',
+              content: '¡Hola! Soy **DealerAmigo**, tu asesor experto en PR Automotive Group. \n\n¿Buscas una SUV de 3 filas, una Pick-Up potente o un sedán económico? Cuéntame qué necesitas y te muestro las mejores opciones con **100,000 millas de garantía**.',
               timestamp: Date.now()
             }
           ]);
@@ -304,7 +305,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#080808] overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#080808] overflow-hidden selection:bg-rose-500 selection:text-white">
       {/* Lightbox Modal */}
       <AnimatePresence>
         {selectedImage && (
@@ -313,81 +314,128 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setSelectedImage(null)}
-            className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4 md:p-12 cursor-zoom-out"
+            className="fixed inset-0 z-[100] bg-black/98 flex items-center justify-center p-4 md:p-12 cursor-zoom-out backdrop-blur-2xl"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.9, opacity: 0, rotate: -2 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              exit={{ scale: 0.9, opacity: 0, rotate: 2 }}
               className="relative max-w-full max-h-full"
             >
               <img 
                 src={selectedImage} 
                 alt="Enlarged view" 
-                className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl border border-white/10" 
+                className="max-w-full max-h-[90vh] object-contain rounded-3xl shadow-[0_50px_100px_rgba(0,0,0,0.8)] border border-white/20" 
               />
               <button 
                 onClick={() => setSelectedImage(null)}
-                className="absolute -top-12 right-0 text-white flex items-center gap-2 hover:text-rose-500 transition-colors bg-white/5 px-4 py-2 rounded-full border border-white/10"
+                className="absolute -top-16 right-0 text-white flex items-center gap-3 hover:text-rose-500 transition-all bg-white/5 px-6 py-3 rounded-full border border-white/10 hover:bg-white/10"
               >
-                <X size={20} />
-                <span className="text-xs font-bold uppercase tracking-widest">Cerrar</span>
+                <X size={22} />
+                <span className="text-xs font-black uppercase tracking-widest">Cerrar Galería</span>
               </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-            <header className="py-2.5 flex-shrink-0 border-b border-white/[0.08] bg-black/50 backdrop-blur-2xl px-6 z-50 sticky top-0">
-        <div className="flex items-center justify-center w-full relative">
-          {/* Centered Logo Cluster */}
-          <div className="flex flex-col items-center">
-            {/* Logo Shield (Refined Replica) */}
-            <div className="relative w-9 h-10 flex items-center justify-center mb-1">
+      {/* Floating WhatsApp (Mobile Only) */}
+      <div className="fixed bottom-32 right-6 z-[60] md:hidden">
+        <button 
+          onClick={() => window.open('https://wa.me/19397152900', '_blank')}
+          className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-2xl shadow-emerald-500/40 animate-bounce transition-transform active:scale-90"
+        >
+          <MessageSquare size={28} />
+        </button>
+      </div>
+
+      <header className="py-4 flex-shrink-0 border-b border-white/[0.08] bg-[#0c0c0c]/80 backdrop-blur-3xl px-6 z-50 sticky top-0">
+        <div className="flex items-center justify-between w-full relative max-w-[1800px] mx-auto">
+          {/* Logo & Status */}
+          <div className="flex items-center gap-4">
+            <div className="relative w-10 h-10 flex items-center justify-center">
               <div 
-                className="absolute inset-0 border-2 border-white rounded-t-xl rounded-b-[1.75rem] bg-white/5 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+                className="absolute inset-0 border-2 border-white rounded-xl bg-white/5 shadow-[0_0_20px_rgba(255,255,255,0.1)]"
               />
-              <span className="relative font-round font-black text-sm tracking-tighter text-white z-10 drop-shadow-md">PR</span>
+              <span className="relative font-round font-black text-sm tracking-tighter text-white z-10 transition-transform group-hover:scale-110">PR</span>
             </div>
             
-            {/* Main Branding */}
-            <div className="flex flex-col items-center gap-0">
-              <div className="flex items-center gap-1">
-                <h1 className="text-sm font-round font-black uppercase text-white tracking-tighter">PR</h1>
-                <h1 className="text-sm font-round font-black uppercase text-rose-600 tracking-tighter">Automotive</h1>
-                <h1 className="text-sm font-round font-black uppercase text-white tracking-tighter">Group</h1>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-base font-round font-black uppercase text-white tracking-tighter">PR Automotive</h1>
+                <span className="text-[10px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-black transform -skew-x-12 shadow-[0_0_10px_rgba(225,29,72,0.5)]">GROUP</span>
               </div>
-              
-              {/* Slanted Ribbon */}
-              <div className="relative mt-0.5">
-                <div className="bg-rose-600 px-2.5 py-0 transform -skew-x-12 flex items-center justify-center">
-                  <span className="text-[5px] font-round font-black uppercase text-white tracking-[0.2em] skew-x-12 whitespace-nowrap">
-                    Retail & Wholesale
-                  </span>
-                </div>
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Showroom Abierto • Carolina, PR</span>
               </div>
             </div>
           </div>
 
-          {/* Small Phone Button (Absolute Right) */}
-          <div className="absolute right-0 flex items-center gap-2">
-            <a 
-              href="tel:+19397152900" 
-              className="w-7 h-7 bg-rose-600 rounded-lg flex items-center justify-center shadow-[0_4px_10px_rgba(225,29,72,0.3)] active:scale-95 transition-transform"
+          {/* Desktop Info */}
+          <div className="hidden lg:flex items-center gap-10">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-1">Ventas VIP</span>
+              <a href="tel:+19397152900" className="text-xl font-mono font-black text-white hover:text-rose-500 transition-colors tracking-tighter">
+                (939) 715-2900
+              </a>
+            </div>
+            <div className="h-10 w-[1px] bg-white/10 mx-2" />
+            <button 
+              onClick={() => setIsAdminView(true)}
+              className="p-2 border border-white/5 rounded-xl hover:bg-white/10 transition-all text-slate-600 hover:text-white"
             >
-              <Phone size={12} className="text-white" />
-            </a>
+              <Menu size={22} />
+            </button>
+          </div>
+
+          {/* Tab Switcher (Visible on small/medium screens) */}
+          <div className="flex md:hidden bg-white/5 p-1 rounded-2xl border border-white/10">
+            <button 
+              onClick={() => setActiveTab('chat')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                activeTab === 'chat' ? "bg-rose-600 text-white shadow-[0_5px_15px_rgba(225,29,72,0.4)]" : "text-slate-500"
+              )}
+            >
+              Asistente
+            </button>
+            <button 
+              onClick={() => setActiveTab('inventory')}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                activeTab === 'inventory' ? "bg-rose-600 text-white shadow-[0_5px_15px_rgba(225,29,72,0.4)]" : "text-slate-500"
+              )}
+            >
+              Listado
+            </button>
           </div>
         </div>
       </header>
 
       {/* Main Content Area: Split View */}
-      <main className="flex-1 flex overflow-hidden">
-        {/* Left Column: AI Concierge */}
-        <aside className="w-full md:w-[450px] lg:w-[500px] border-r border-white/10 bg-[#0c0c0c] flex flex-col relative">
+      <main className="flex-1 flex overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          {/* Left Column: AI Concierge */}
+          <aside 
+            key="chat-sidebar"
+            className={cn(
+              "w-full md:w-[450px] lg:w-[540px] border-r border-white/10 bg-[#0c0c0c] flex flex-col relative transition-all duration-500 ease-in-out",
+              activeTab === 'inventory' ? "hidden md:flex" : "flex"
+            )}
+          >
+          {/* Status Bar */}
+          <div className="px-6 py-3 bg-white/[0.02] border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(225,29,72,0.8)]" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Concierge Automotriz Activo</span>
+            </div>
+            <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">v2.4.0-ELITE</span>
+          </div>
+
           <div 
             ref={scrollAreaRef}
-            className="flex-1 overflow-y-auto px-4 md:px-6 py-6 md:py-8 space-y-8 scroll-smooth"
+            className="flex-1 overflow-y-auto px-4 md:px-6 py-6 md:py-10 space-y-10 scroll-smooth custom-scrollbar"
           >
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
@@ -397,6 +445,7 @@ export default function App() {
                   onVehicleClick={(v) => {
                     const messageText = `Me interesa el ${v.year} ${v.make} ${v.model}. Cuéntame más detalles sobre este auto.`;
                     handleSend(messageText);
+                    if (window.innerWidth < 768) setActiveTab('chat');
                   }} 
                   onImageClick={setSelectedImage}
                 />
@@ -407,105 +456,150 @@ export default function App() {
           </div>
 
           {/* Input Bar */}
-          <div className="p-4 bg-black/40 border-t border-white/5 shrink-0 backdrop-blur-md">
-            <div className="relative group flex gap-2">
+          <div className="p-5 bg-[#080808]/80 backdrop-blur-2xl border-t border-white/5 shrink-0">
+            <div className="relative group flex gap-3">
               <div className="relative flex-1">
                 <input
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
-                  placeholder="Pregúntame por el inventario..."
-                  className="w-full bg-[#151515] border border-white/10 rounded-xl py-4 pl-4 pr-12 text-base text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-rose-500/50 transition-all shadow-xl"
+                  placeholder="Habla con tu asesor experto..."
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-2xl py-4.5 pl-5 pr-14 text-base text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-rose-500/40 focus:bg-white/[0.05] transition-all shadow-2xl"
                 />
                 <button 
                   onClick={() => handleSend()}
                   disabled={!inputText.trim() || isTyping}
-                  className="absolute right-2 top-2 p-2 bg-rose-600 rounded-lg hover:bg-rose-500 disabled:bg-stone-800 text-white transition-all shadow-lg active:scale-95"
+                  className="absolute right-2 top-2 bottom-2 aspect-square bg-rose-600 rounded-xl hover:bg-rose-500 disabled:bg-white/5 disabled:text-slate-700 text-white transition-all shadow-[0_8px_20px_rgba(225,29,72,0.3)] active:scale-90 flex items-center justify-center p-0"
                 >
-                  <Send size={20} />
+                  <Send size={18} />
                 </button>
               </div>
               <button
                 onClick={clearChat}
-                title="Nueva conversación"
-                className="p-3 bg-white/5 border border-white/10 rounded-xl text-slate-500 hover:text-white hover:bg-white/10 transition-all flex-shrink-0"
+                title="Reiniciar chat"
+                className="px-4 bg-white/5 border border-white/10 rounded-2xl text-slate-500 hover:text-white hover:bg-rose-600/10 hover:border-rose-600/30 transition-all flex-shrink-0 flex items-center justify-center"
               >
-                <RotateCcw size={22} />
+                <RotateCcw size={20} />
               </button>
             </div>
-            <p className="text-xs text-center text-slate-600 mt-3 uppercase tracking-[0.2em] font-bold">
-              Powered by DealerAmigo
-            </p>
+            <div className="flex items-center justify-center gap-6 mt-4">
+              <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
+                DealerAmigo AI
+              </p>
+              <div className="h-3 w-[1px] bg-white/5" />
+              <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
+                Seguro & Encriptado
+              </p>
+            </div>
           </div>
         </aside>
 
         {/* Right Column: Live Inventory Display */}
-        <section className="hidden md:flex flex-1 bg-[#050505] relative flex-col overflow-hidden">
+        <section className={cn(
+          "flex-1 bg-[#050505] relative flex-col overflow-hidden transition-all duration-500 ease-in-out",
+          activeTab === 'chat' ? "hidden md:flex" : "flex"
+        )}>
           {/* Ticker in section header */}
-          <div className="bg-rose-700/10 border-b border-rose-600/10 py-2 overflow-hidden shrink-0">
-            <div className="flex whitespace-nowrap animate-[ticker_40s_linear_infinite]">
-              {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
-                <span key={i} className="text-xs font-bold uppercase tracking-[0.2em] text-rose-500 px-8 flex items-center gap-4">
+          <div className="bg-rose-600/10 border-b border-rose-600/10 py-3 overflow-hidden shrink-0">
+            <div className="flex whitespace-nowrap animate-[ticker_60s_linear_infinite]">
+              {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
+                <span key={i} className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-500 px-12 flex items-center gap-4">
                   {item}
-                  <span className="opacity-30 text-slate-600">●</span>
+                  <span className="opacity-20 text-white font-normal">/</span>
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-8 lg:p-12">
-            <div className="flex justify-between items-end mb-10">
-              <div>
-                <h3 className="text-4xl font-black italic tracking-tighter uppercase text-white">
-                  Inventario Destacado
+          <div className="flex-1 overflow-y-auto p-6 md:p-14 lg:p-20 custom-scrollbar">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="h-[2px] w-12 bg-rose-600" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.5em] text-rose-500">Premium Selection</span>
+                </div>
+                <h3 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase text-white leading-none mb-6">
+                  Unidades <br/> <span className="text-rose-600">Certificadas</span>
                 </h3>
-                <p className="text-sm text-slate-500 font-medium">Modelos premium disponibles para entrega inmediata</p>
+                <p className="text-lg text-slate-400 font-medium leading-relaxed">
+                  Calidad excepcional garantizada. Cada vehículo en nuestro inventario pasa por una inspección rigurosa de 115 puntos para asegurar tu tranquilidad total.
+                </p>
               </div>
-              <div className="flex gap-3">
-                <button className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-bold uppercase tracking-widest text-slate-300 hover:bg-white/10 transition-colors">
-                  Filtrar
-                </button>
-                <button className="px-6 py-2.5 bg-rose-600 rounded-xl text-xs font-bold uppercase tracking-widest text-white hover:bg-rose-500 transition-all shadow-lg shadow-rose-600/20 active:scale-95">
-                  Pedir un Auto
-                </button>
+              <div className="flex flex-col gap-4 w-full md:w-auto">
+                 <div className="flex gap-3">
+                  <button 
+                    onClick={() => handleSend("¿Qué SUVs tienen disponibles?")}
+                    className="flex-1 md:flex-none px-8 py-5 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 hover:bg-white/10 hover:border-white/20 transition-all"
+                  >
+                    Ver SUVs
+                  </button>
+                  <button 
+                    onClick={() => handleSend("¿Me pueden tasar mi trade-in?")}
+                    className="flex-1 md:flex-none px-8 py-5 bg-rose-600 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-rose-500 transition-all shadow-[0_15px_30px_rgba(225,29,72,0.3)] active:scale-95"
+                  >
+                    Tasar Trade-In
+                  </button>
+                </div>
+                <div className="flex items-center justify-center md:justify-end gap-2 text-emerald-500">
+                  <ShieldCheck size={14} />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500/80">Protección de crédito disponible</span>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 xl:grid-cols-2 3xl:grid-cols-3 gap-10 lg:gap-14">
               {inventory.map(v => (
                 <VehicleCard key={v.id} vehicle={v} onImageClick={setSelectedImage} />
               ))}
             </div>
 
             {/* Special Request Callout */}
-            <div className="mt-16 group">
-              <div className="bg-gradient-to-r from-rose-950/40 via-rose-900/10 to-transparent border-l-4 border-rose-600 p-8 rounded-r-3xl backdrop-blur-sm shadow-2xl transition-all hover:translate-x-1">
-                <h4 className="text-xl font-bold mb-2 uppercase tracking-tight text-white flex items-center gap-3">
-                  <Sparkles className="text-rose-500" />
-                  ¿No encuentras lo que buscas?
-                </h4>
-                <p className="text-sm text-slate-300 leading-relaxed max-w-2xl">
-                  Cuéntanos qué auto necesitas. Tenemos acceso a subastas exclusivas y red de dealers premium en toda la isla y EE.UU. <strong>Lo traemos por ti con los mejores beneficios.</strong>
-                </p>
-                <button className="mt-6 text-rose-500 text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:gap-3 transition-all">
-                  Hablar con un experto <ChevronRight size={14} />
-                </button>
+            <div className="mt-24 group relative">
+              <div className="absolute inset-0 bg-rose-600/5 blur-3xl rounded-[3rem] -z-10" />
+              <div className="bg-[#0c0c0c] border border-white/5 p-10 md:p-16 rounded-[3rem] shadow-2xl overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                  <Car size={300} strokeWidth={1} className="text-white" />
+                </div>
+                
+                <div className="relative z-10">
+                  <h4 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-6 flex items-center gap-4">
+                    <Sparkles className="text-rose-500" />
+                    Búsqueda Personalizada
+                  </h4>
+                  <p className="text-xl text-slate-400 leading-relaxed max-w-3xl mb-10 font-medium">
+                    ¿Tienes un modelo específico en mente que no ves hoy? <br/>
+                    Nuestro equipo de <strong>Sourcing Elite</strong> localiza cualquier unidad en Puerto Rico o Estados Unidos y la trae por ti con garantía oficial.
+                  </p>
+                  <button 
+                    onClick={() => handleSend("Necesito que me busquen un auto específico que no está en el listado.")}
+                    className="group-hover:translate-x-2 transition-all duration-500 bg-rose-600/10 border border-rose-600/30 text-rose-500 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-[0.3em] inline-flex items-center gap-4 hover:bg-rose-600 hover:text-white"
+                  >
+                    Activar Búsqueda Especial <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <footer className="h-12 bg-black border-t border-white/10 flex items-center px-8 justify-between shrink-0">
-            <div className="flex gap-6">
-              <span className="text-xs text-slate-600 uppercase font-bold tracking-[0.2em]">Live Inventory</span>
-              <span className="text-xs text-slate-600 uppercase font-bold tracking-[0.2em]">Financiamiento 100%</span>
-              <span className="text-xs text-slate-600 uppercase font-bold tracking-[0.2em]">Trade-In Ready</span>
+          <footer className="h-16 bg-black/80 backdrop-blur-xl border-t border-white/[0.05] flex items-center px-10 justify-between shrink-0">
+            <div className="hidden lg:flex gap-10">
+              <span className="text-[9px] text-slate-500 uppercase font-black tracking-[0.3em] flex items-center gap-2">
+                <div className="w-1 h-1 bg-rose-600 rounded-full" /> Live Updates
+              </span>
+              <span className="text-[9px] text-slate-500 uppercase font-black tracking-[0.3em] flex items-center gap-2">
+                <div className="w-1 h-1 bg-rose-600 rounded-full" /> Bancos Locales & Federales
+              </span>
+              <span className="text-[9px] text-slate-500 uppercase font-black tracking-[0.3em] flex items-center gap-2">
+                <div className="w-1 h-1 bg-rose-600 rounded-full" /> Protección Credito Incluida
+              </span>
             </div>
-            <div className="flex items-center gap-4">
-              <p className="text-xs text-slate-800 font-round font-bold uppercase">PR Automotive Group &copy; 2024</p>
+            <div className="flex items-center gap-4 ml-auto">
+              <p className="text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">PR Automotive Group &copy; 2026 • Marginal Los Ángeles</p>
             </div>
           </footer>
         </section>
+      </AnimatePresence>
       </main>
 
       {isAdminView && (
@@ -532,6 +626,26 @@ export default function App() {
         @keyframes ticker {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(225, 29, 72, 0.5);
         }
       `}</style>
     </div>
@@ -689,6 +803,8 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
 }
 
 function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick?: (url: string) => void }) {
+  const estimatedPayment = Math.round((vehicle.price * 1.1) / 72); // Super simple estimate
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 30 }}
@@ -696,7 +812,7 @@ function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick
       viewport={{ once: true }}
       className="bg-[#0c0c0c] border border-white/[0.08] rounded-[2.5rem] overflow-hidden group hover:border-rose-600/30 transition-all duration-700 shadow-3xl"
     >
-      <div className="h-64 bg-[#1a1a1a] overflow-hidden relative">
+      <div className="h-72 bg-[#1a1a1a] overflow-hidden relative">
         <div 
           onClick={() => onImageClick?.(vehicle.image)}
           className="cursor-zoom-in"
@@ -719,28 +835,33 @@ function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick
         </div>
 
         <div className="absolute bottom-6 left-8 pointer-events-none">
-           <span className="text-white/10 font-black text-6xl uppercase tracking-tighter block leading-none">
+           <span className="text-white/10 font-black text-6xl uppercase tracking-tighter block leading-none select-none">
             {vehicle.make}
            </span>
         </div>
       </div>
-      <div className="p-8 space-y-8">
-        <div className="flex flex-col gap-2">
+      <div className="p-8 space-y-6">
+        <div className="flex flex-col gap-1">
           <h4 className="text-3xl font-black italic uppercase tracking-tighter text-white group-hover:text-rose-500 transition-colors leading-none">
             {vehicle.model}
           </h4>
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest leading-none">
-            Unidad Certificada / Garantía 100K
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] leading-none mt-2">
+            Unidad Certificada / Garantía 100K Millas
           </p>
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-3xl font-mono text-white font-black tracking-tighter">
-            ${vehicle.price.toLocaleString()}
-          </span>
-          <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-black uppercase tracking-widest">
-            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-            Disponible
+        <div className="flex items-center justify-between py-4 border-y border-white/5">
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-1">Precio Online</span>
+            <span className="text-3xl font-mono text-white font-black tracking-tighter">
+              ${vehicle.price.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] uppercase font-black text-rose-500 tracking-widest mb-1">Est. Mensual</span>
+            <span className="text-2xl font-mono text-white font-black tracking-tighter">
+              ${estimatedPayment}/mo*
+            </span>
           </div>
         </div>
         
@@ -748,37 +869,38 @@ function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick
           <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
             <Fuel size={14} className="text-rose-600" />
             <div className="flex flex-col">
-              <span className="text-xs uppercase font-round font-bold text-slate-500 leading-none mb-1">Millaje</span>
+              <span className="text-[10px] uppercase font-round font-bold text-slate-500 leading-none mb-1">Millaje</span>
               <span className="text-sm uppercase font-black text-slate-400 tracking-wider font-mono">{vehicle.mileage}</span>
             </div>
           </div>
-          {vehicle.mpg ? (
-            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-              <Sparkles size={14} className="text-emerald-400" />
-              <div className="flex flex-col">
-                <span className="text-xs uppercase font-round font-bold text-slate-500 leading-none mb-1">Eficiencia</span>
-                <span className="text-sm uppercase font-black text-emerald-400 tracking-wider font-mono">{vehicle.mpg}</span>
-              </div>
+          <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
+            <ShieldCheck size={14} className="text-rose-600" />
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase font-round font-bold text-slate-500 leading-none mb-1">Garantía</span>
+              <span className="text-sm uppercase font-black text-slate-400 tracking-wider font-mono">100K Mi</span>
             </div>
-          ) : (
-            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-              <ShieldCheck size={14} className="text-rose-600" />
-              <span className="text-xs uppercase font-round font-black text-slate-400 tracking-wider">Garantizado</span>
-            </div>
-          )}
+          </div>
         </div>
 
         {vehicle.specialOffer && (
-          <div className="bg-rose-600/10 border border-rose-600/30 p-4 rounded-2xl animate-pulse">
-            <span className="text-xs uppercase font-black text-rose-500 tracking-widest block mb-1">Oferta Especial</span>
+          <div className="bg-rose-600/10 border border-rose-600/30 p-4 rounded-2xl">
+            <span className="text-[10px] uppercase font-black text-rose-500 tracking-widest block mb-1">Oferta Especial</span>
             <p className="text-sm font-bold text-white tracking-tight">{vehicle.specialOffer}</p>
           </div>
         )}
 
-        <button className="w-full bg-rose-600 text-white font-round font-black py-5 rounded-[1.5rem] text-sm uppercase tracking-[0.2em] transition-all hover:bg-rose-500 shadow-[0_10px_30px_rgba(225,29,72,0.3)] active:scale-95 flex items-center justify-center gap-3 group/btn">
-          Cotización VIP
-          <ChevronRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
-        </button>
+        <div className="flex gap-2 pt-2">
+          <button 
+            className="flex-1 bg-rose-600 text-white font-round font-black py-5 rounded-[1.5rem] text-sm uppercase tracking-[0.2em] transition-all hover:bg-rose-500 shadow-[0_10px_30px_rgba(225,29,72,0.3)] active:scale-95 flex items-center justify-center gap-3 group/btn"
+            onClick={() => window.open(`https://wa.me/19397152900?text=Hola! Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} de ${vehicle.price}`, '_blank')}
+          >
+            WhatsApp
+            <MessageSquare size={16} className="group-hover/btn:scale-110 transition-transform" />
+          </button>
+          <button className="w-16 bg-white/5 border border-white/10 rounded-[1.5rem] flex items-center justify-center text-white hover:bg-white/10 transition-all">
+            <Sparkles size={20} className="text-rose-500" />
+          </button>
+        </div>
       </div>
     </motion.div>
   );
