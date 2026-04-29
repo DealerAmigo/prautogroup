@@ -2,12 +2,18 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
+import { google } from "googleapis";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
+// AI Setup
+const aiKey = process.env.GEMINI_API_KEY;
+const ai = aiKey ? new GoogleGenerativeAI(aiKey) : null;
+
 // Google Sheets & Apps Script URLs
 const INVENTORY_CSV_URL = "https://docs.google.com/spreadsheets/d/1eP8zbvY5Ifsno2g2AsJoc5YV4q-PxNxzQaM6SSNy-dk/export?format=csv";
-const LEADS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby84hfUAZ4ddagrcaE85eKjnjDzl5OGU2UiccHlMsosgjNmraYhLj-qx77HHb13JvCY/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4v2NF-Vv-7Ge-T7MPqfAfUD5zDemwl_PJXybg6oyu702i8imxQKMhyTfdzByr45hyMg/exec";
 
 async function startServer() {
   const app = express();
@@ -18,7 +24,8 @@ async function startServer() {
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ 
-      status: "ok"
+      status: "ok", 
+      geminiConfigured: !!ai
     });
   });
 
@@ -35,24 +42,59 @@ async function startServer() {
     }
   });
 
+  app.post("/api/chat", async (req, res) => {
+    try {
+      if (!ai) {
+        throw new Error("GEMINI_API_KEY is not configured on the server.");
+      }
+
+      const { message, history, systemInstruction, tools } = req.body;
+      const model = ai.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        systemInstruction,
+      });
+
+      const chat = model.startChat({
+        history: history.map((h: any) => ({
+          role: h.role === "model" ? "model" : "user",
+          parts: h.parts.map((p: any) => {
+            if (p.functionCall) return { functionCall: p.functionCall };
+            if (p.functionResponse) return { functionResponse: p.functionResponse };
+            return { text: p.text };
+          }),
+        })),
+        tools: tools ? [{ functionDeclarations: tools }] : undefined,
+      });
+
+      const result = await chat.sendMessage(message || "");
+      const response = result.response;
+      
+      const candidates = response.candidates || [];
+      const parts = candidates[0]?.content?.parts || [];
+
+      return res.json({
+        text: response.text(),
+        functionCalls: parts.filter(p => p.functionCall).map(p => p.functionCall)
+      });
+
+    } catch (error: any) {
+      console.error("[API Chat Error]:", error);
+      res.status(500).json({ error: "AI processing failed", details: error.message });
+    }
+  });
+
   // Lead Registration via Apps Script (Forwarding exactly what Apps Script expects)
   app.post("/api/leads", async (req, res) => {
     try {
-      const response = await fetch(LEADS_SCRIPT_URL, {
+      const response = await fetch(APPS_SCRIPT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(req.body),
         redirect: "follow"
       });
 
-      const text = await response.text();
-      try {
-        const data = JSON.parse(text);
-        res.json(data);
-      } catch (e) {
-        console.error("[Apps Script Lead Error] Result not JSON:", text.substring(0, 500));
-        res.json({ success: false, error: "Apps Script no devolvió JSON válido" });
-      }
+      const data = await response.json();
+      res.json(data);
     } catch (error: any) {
       console.error("[Apps Script Error] saving lead:", error.message);
       res.json({ success: false, error: error.message });

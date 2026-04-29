@@ -1,32 +1,24 @@
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Vehicle } from "../types";
 
-// The platform injects GEMINI_API_KEY into the environment. 
-// Following gemini-api skill: Always call from frontend using @google/genai.
-const geminiKey = process.env.GEMINI_API_KEY;
-
-if (!geminiKey) {
-  console.warn("GEMINI_API_KEY is not defined in the environment. AI features may not work.");
-}
-
-const ai = new GoogleGenAI({ apiKey: geminiKey || "" });
+// We use a server-side proxy (/api/chat) to keep the GEMINI_API_KEY secure.
+// This handles all AI interactions safely.
 
 export const searchInventoryFn = {
   name: "search_inventory",
   parameters: {
-    type: Type.OBJECT,
+    type: "OBJECT",
     description: "Search or browse the PR Automotive Group inventory. Use this to find ANY vehicle by make, model, year, category, or price. Can be used for specific searches or broad browsing.",
     properties: {
       query: {
-        type: Type.STRING,
+        type: "STRING",
         description: "Search keywords (e.g., 'Toyota', 'SUV', 'luxury', 'economico', '3 filas'). Leave empty to browse all.",
       },
       category: {
-        type: Type.STRING,
+        type: "STRING",
         description: "Filter by category. Allowed values: 'Pick Up', 'SUV', 'Sedan', 'Economico', 'De Lujo', '3 Filas', 'Mini-Van'.",
       },
       maxPrice: {
-        type: Type.NUMBER,
+        type: "NUMBER",
         description: "Maximum budget.",
       },
     },
@@ -36,13 +28,13 @@ export const searchInventoryFn = {
 export const requestSpecificCarFn = {
   name: "request_car",
   parameters: {
-    type: Type.OBJECT,
+    type: "OBJECT",
     description: "When a customer wants a specific car that is not in stock, use this to log their request.",
     properties: {
-      make: { type: Type.STRING },
-      model: { type: Type.STRING },
-      yearRange: { type: Type.STRING },
-      notes: { type: Type.STRING, description: "Any specific preferences like color or mileage." },
+      make: { type: "STRING" },
+      model: { type: "STRING" },
+      yearRange: { type: "STRING" },
+      notes: { type: "STRING", description: "Any specific preferences like color or mileage." },
     },
     required: ["make", "model"],
   },
@@ -51,10 +43,10 @@ export const requestSpecificCarFn = {
 export const showBookingFormFn = {
   name: "show_booking_form",
   parameters: {
-    type: Type.OBJECT,
+    type: "OBJECT",
     description: "Display a booking form to the customer when they are ready to schedule an appointment or visit the dealer.",
     properties: {
-      reason: { type: Type.STRING, description: "Why the form is being shown (e.g. 'Test drive', 'Consultation')." }
+      reason: { type: "STRING", description: "Why the form is being shown (e.g. 'Test drive', 'Consultation')." }
     }
   }
 };
@@ -62,13 +54,13 @@ export const showBookingFormFn = {
 export const scheduleAppointmentFn = {
   name: "schedule_appointment",
   parameters: {
-    type: Type.OBJECT,
+    type: "OBJECT",
     description: "Schedule an appointment in the Google Calendar. Ask for preferred date and time first.",
     properties: {
-      customerName: { type: Type.STRING },
-      date: { type: Type.STRING, description: "Format: YYYY-MM-DD" },
-      time: { type: Type.STRING, description: "Format: HH:mm (24h)" },
-      interest: { type: Type.STRING, description: "Vehicle or service they are interested in." }
+      customerName: { type: "STRING" },
+      date: { type: "STRING", description: "Format: YYYY-MM-DD" },
+      time: { type: "STRING", description: "Format: HH:mm (24h)" },
+      interest: { type: "STRING", description: "Vehicle or service they are interested in." }
     },
     required: ["customerName", "date", "time"]
   }
@@ -77,15 +69,15 @@ export const scheduleAppointmentFn = {
 export const registerLeadFn = {
   name: "register_lead",
   parameters: {
-    type: Type.OBJECT,
+    type: "OBJECT",
     description: "Capture customer contact information to send a detailed proposal or photos via WhatsApp. Call this when the user shows interest or asks for photos/details and after you have asked for their name, phone, and email.",
     properties: {
-      name: { type: Type.STRING, description: "Customer's full name" },
-      email: { type: Type.STRING, description: "Customer's email address" },
-      phone: { type: Type.STRING, description: "Customer's phone number" },
-      vehicleInterest: { type: Type.STRING, description: "The vehicle they are interested in" },
-      notes: { type: Type.STRING, description: "Additional notes about the customer's preferences, budget, or trade-in." },
-      source: { type: Type.STRING, description: "The context where the lead was captured. e.g. 'chat', 'image_click', 'proposal_request'." }
+      name: { type: "STRING", description: "Customer's full name" },
+      email: { type: "STRING", description: "Customer's email address" },
+      phone: { type: "STRING", description: "Customer's phone number" },
+      vehicleInterest: { type: "STRING", description: "The vehicle they are interested in" },
+      notes: { type: "STRING", description: "Additional notes about the customer's preferences, budget, or trade-in." },
+      source: { type: "STRING", description: "The context where the lead was captured. e.g. 'chat', 'image_click', 'proposal_request'." }
     },
     required: ["name", "email", "phone"]
   }
@@ -155,43 +147,51 @@ export class GeminiChat {
   }
 
   async sendMessage(message: string) {
-    if (!geminiKey) {
-      throw new Error("No se ha configurado la llave de API de Gemini. Por favor verifica la configuración en AI Studio.");
-    }
-
     if (message && message.trim()) {
       this.history.push({ role: "user", parts: [{ text: message }] });
     }
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: this.history,
-        config: {
+      const resp = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          history: this.history,
           systemInstruction: getSalesmanPrompt(this.inventory),
-          tools: [{
-            functionDeclarations: [
-              searchInventoryFn,
-              requestSpecificCarFn,
-              showBookingFormFn,
-              scheduleAppointmentFn,
-              registerLeadFn
-            ]
-          }]
-        }
+          tools: [
+            searchInventoryFn,
+            requestSpecificCarFn,
+            showBookingFormFn,
+            scheduleAppointmentFn,
+            registerLeadFn
+          ]
+        })
       });
 
-      const botParts = response.candidates?.[0]?.content?.parts || [];
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || "AI processing failed");
+      }
+
+      const data = await resp.json();
+      
+      const botParts = [];
+      if (data.text) botParts.push({ text: data.text });
+      if (data.functionCalls && data.functionCalls.length > 0) {
+        data.functionCalls.forEach((fc: any) => botParts.push({ functionCall: fc }));
+      }
+      
       this.history.push({ role: "model", parts: botParts });
 
       return {
         response: {
-          text: () => response.text || "",
-          functionCalls: () => response.functionCalls || []
+          text: () => data.text || "",
+          functionCalls: () => data.functionCalls || []
         }
       };
     } catch (error: any) {
-      console.error("Gemini AI API Error:", error);
+      console.error("Gemini Proxy Error:", error);
       throw error;
     }
   }
