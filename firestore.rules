@@ -18,9 +18,9 @@ service cloud.firestore {
       allow update, delete: if false; // Secure customer data
     }
 
-    // Chats collection
+    // Chats collection - Allows session persistence by ID
     match /chats/{chatId} {
-      allow read, write: if isValidId(chatId); // Allow session persistence by ID
+      allow read, write: if isValidId(chatId);
     }
   }
 }

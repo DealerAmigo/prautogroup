@@ -1,32 +1,13 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { GoogleGenAI, Type } from "@google/genai";
-import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
-import { google } from "googleapis";
 
 dotenv.config();
 
-// Google Sheets Setup
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
-async function getSheetsClient() {
-  try {
-    const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-    if (!serviceAccount) {
-      console.warn("[Sheets] GOOGLE_SERVICE_ACCOUNT_JSON is missing in environment variables.");
-      return null;
-    }
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(serviceAccount),
-      scopes: SCOPES,
-    });
-    return google.sheets({ version: "v4", auth });
-  } catch (error) {
-    console.error("[Sheets] Auth Error:", (error as Error).message);
-    return null;
-  }
-}
+// Google Sheets & Apps Script URLs
+const INVENTORY_CSV_URL = "https://docs.google.com/spreadsheets/d/1eP8zbvY5Ifsno2g2AsJoc5YV4q-PxNxzQaM6SSNy-dk/export?format=csv";
+const LEADS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby84hfUAZ4ddagrcaE85eKjnjDzl5OGU2UiccHlMsosgjNmraYhLj-qx77HHb13JvCY/exec";
 
 async function startServer() {
   const app = express();
@@ -34,94 +15,47 @@ async function startServer() {
 
   app.use(express.json());
 
-  // APIs Setup
-  const anthropic = (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim().length > 0)
-    ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    : null;
-
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ 
-      status: "ok", 
-      anthropicConfigured: !!process.env.ANTHROPIC_API_KEY,
-      geminiConfigured: !!process.env.GEMINI_API_KEY
+      status: "ok"
     });
   });
 
-  // Lead Registration in Google Sheets
-  app.post("/api/leads", async (req, res) => {
-    console.log("[API] /api/leads - Processing...");
+  // Fetch Inventory directly via CSV (More reliable than Apps Script for reading large data)
+  app.get("/api/inventory", async (req, res) => {
     try {
-      const lead = req.body;
-      const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-      
-      if (!spreadsheetId) {
-        console.warn("[Sheets] No Spreadsheet ID configured");
-        return res.json({ success: true, savedLocally: true, message: "Lead processed (Simulation)" });
-      }
-
-      const sheets = await getSheetsClient();
-      if (!sheets) {
-        throw new Error("Could not initialize Sheets client");
-      }
-
-      const values = [
-        [
-          new Date().toISOString(),
-          lead.name || lead.nombre || "N/A",
-          lead.phone || lead.telefono || "N/A",
-          lead.email || "N/A",
-          lead.vehicleInterest || lead.vehiculo || "N/A",
-          lead.notes || lead.presupuesto || lead.fullText || "N/A",
-          lead.source || "Chat Assistant",
-          lead.type || "Lead",
-          lead.credito || "N/A"
-        ]
-      ];
-
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: "Leads!A:I",
-        valueInputOption: "RAW",
-        requestBody: { values },
-      });
-
-      console.log("[Sheets] Lead saved successfully");
-      res.json({ success: true });
+      const response = await fetch(INVENTORY_CSV_URL);
+      if (!response.ok) throw new Error("No se pudo acceder al CSV de la hoja.");
+      const csvText = await response.text();
+      res.send(csvText); // Send raw CSV to be parsed by the client
     } catch (error: any) {
-      console.error("[Sheets] Error saving lead:", error.message);
-      // Don't fail the user request if sheets fails, just log it.
-      // In a real app we might want to store in DB as fallback.
-      res.json({ success: true, error: error.message });
+      console.error("[Inventory Error]:", error.message);
+      res.status(500).json({ error: "Failed to load inventory" });
     }
   });
 
-  app.post("/api/chat", async (req, res) => {
-    const messagePart = req.body.message?.substring(0, 50);
-    console.log(`[API] /api/chat - Message: ${messagePart}...`);
+  // Lead Registration via Apps Script (Forwarding exactly what Apps Script expects)
+  app.post("/api/leads", async (req, res) => {
     try {
-      const { message, history, systemInstruction, tools } = req.body;
-      
-      const hasContent = (message && message.trim()) || (history && history.length > 0);
-      if (!hasContent) {
-        return res.status(400).json({ error: "No content provided" });
+      const response = await fetch(LEADS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+        redirect: "follow"
+      });
+
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch (e) {
+        console.error("[Apps Script Lead Error] Result not JSON:", text.substring(0, 500));
+        res.json({ success: false, error: "Apps Script no devolvió JSON válido" });
       }
-
-      // If Anthropic is configured, we could handle it here.
-      // But for now, the frontend handles Gemini directly.
-      // We return a 501 or a specific message if no backend AI is ready.
-      
-      return res.status(501).json({ 
-        error: "Backend chat not implemented",
-        text: "La IA del servidor no está configurada. Usando IA local."
-      });
-
-    } catch (outerError: any) {
-      console.error("[API] Error:", outerError.message);
-      return res.status(500).json({ 
-        error: "System error", 
-        details: outerError.message
-      });
+    } catch (error: any) {
+      console.error("[Apps Script Error] saving lead:", error.message);
+      res.json({ success: false, error: error.message });
     }
   });
 

@@ -148,87 +148,80 @@ const MOCK_INVENTORY: Vehicle[] = [
   }
 ];
 
-/**
- * INSTRUCCIONES PARA EL USUARIO:
- * Para conectar tu Google Sheet:
- * 1. Ve a tu hoja de cálculo.
- * 2. Archivo > Compartir > Publicar en la web.
- * 3. Selecciona 'Valores separados por comas (.csv)'.
- * 4. Pega la URL aquí abajo en SHEET_CSV_URL.
- */
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1eP8zbvY5Ifsno2g2AsJoc5YV4q-PxNxzQaM6SSNy-dk/export?format=csv"; 
-
 export async function getInventory(): Promise<Vehicle[]> {
   try {
-    const response = await fetch(SHEET_CSV_URL);
-    if (!response.ok) throw new Error("No se pudo acceder al Google Sheet. Verifica que esté compartido públicamente.");
+    const response = await fetch("/api/inventory");
+    if (!response.ok) throw new Error("No se pudo cargar el inventario.");
     
     const csvText = await response.text();
     const rows = csvText.split('\n').filter(row => row.trim() !== '');
     
     if (rows.length < 2) return MOCK_INVENTORY;
 
-    // Basic CSV Parser (assuming simple mapping for now)
-    // Expects headers like: Make, Model, Year, Price, Image, Description, Mileage, Clase
+    // Mapping headers to indexes
     const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
     
+    const getIdx = (name: string) => headers.findIndex(h => h.replace(/\s+/g, '').includes(name.toLowerCase()));
+
+    const idx = {
+      year: getIdx('año'),
+      make: getIdx('marca'),
+      model: getIdx('modelo'),
+      trim: getIdx('sub-modelo'),
+      price: getIdx('precio'),
+      mileage: getIdx('millaje'),
+      image: getIdx('fotoweblink'),
+      category: getIdx('clase'),
+      desc: getIdx('descripcion'),
+      mpg: getIdx('mpg'),
+      disp: getIdx('disponibles')
+    };
+
     const inventory = rows.slice(1).map((row, index) => {
-      // Robust CSV split that respects quotes but allows spaces in unquoted fields
+      // Split CSV keeping quotes in mind
       const values: string[] = [];
       let current = '';
       let inQuotes = false;
-      
       for (let i = 0; i < row.length; i++) {
         const char = row[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
+        if (char === '"') inQuotes = !inQuotes;
+        else if (char === ',' && !inQuotes) {
           values.push(current.trim());
           current = '';
-        } else {
-          current += char;
-        }
+        } else current += char;
       }
       values.push(current.trim());
 
-      const getVal = (key: string) => {
-        // Find index by checking if the header (cleaned) contains our key
-        const i = headers.findIndex(h => h.replace(/\s+/g, '').includes(key.toLowerCase().replace(/\s+/g, '')));
-        return i !== -1 ? values[i]?.replace(/^"|"$/g, '').trim() : null;
-      };
-
-      const make = getVal('marca') || "PR Group";
-      const model = getVal('modelo') || "Premium Unit";
-      const submodel = getVal('sub-modelo') || "";
-      const priceStr = getVal('precio') || "0";
+      const clean = (val: string) => (val || "").replace(/^"|"$/g, '').trim();
+      
+      const priceStr = clean(values[idx.price]) || "0";
       const price = parseInt(priceStr.replace(/[^0-9]/g, '')) || 0;
-      const year = parseInt(getVal('año') || "2024");
-      const image = getVal('foto') || "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800";
-      const mileage = getVal('millaje') || "Entrega inmediata";
-      const category = getVal('clase') || "";
-      const desc = getVal('descripcion') || "";
-      const mpg = getVal('mpg') || "";
-      const specialOffer = getVal('oferta') || getVal('special') || getVal('promo') || getVal('oferta especial') || "";
+      const year = parseInt(clean(values[idx.year]) || "2024");
+      const make = clean(values[idx.make]) || "PR Automotive";
+      const model = clean(values[idx.model]);
+      const trim = clean(values[idx.trim]);
+      const image = clean(values[idx.image]);
+      const category = clean(values[idx.category]);
 
       return {
         id: String(index),
         make,
-        model: submodel ? `${model} ${submodel}` : model,
+        model: trim ? `${model} ${trim}` : model,
         year,
         price,
-        image,
-        description: desc || `${category} - Unidad certificada con garantía.`,
-        mileage,
+        image: image.startsWith('http') ? image : "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800",
+        description: clean(values[idx.desc]) || `${category} certificado con garantía.`,
+        mileage: clean(values[idx.mileage]) || "Bajo millaje",
         category,
-        mpg,
-        specialOffer,
-        isAvailable: true
+        mpg: clean(values[idx.mpg]) || "",
+        specialOffer: "",
+        isAvailable: clean(values[idx.disp]).toLowerCase() !== 'no'
       };
     });
 
     return inventory.length > 0 ? inventory : MOCK_INVENTORY;
   } catch (error) {
-    console.error("Error loading inventory from URL:", error);
+    console.error("Error loading inventory from API:", error);
     return MOCK_INVENTORY;
   }
 }

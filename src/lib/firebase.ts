@@ -1,14 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, serverTimestamp, doc, setDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDdjXbkUTUaTk4r-rmYJDVfOEgzs-99ooE",
-  authDomain: "ai-studio-applet-webapp-3d48e.firebaseapp.com",
-  projectId: "ai-studio-applet-webapp-3d48e",
-  storageBucket: "ai-studio-applet-webapp-3d48e.firebasestorage.app",
-  messagingSenderId: "69135008810",
-  appId: "1:69135008810:web:071fbb793481f1a52caf53"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 let app: any;
@@ -16,11 +16,25 @@ let db: any;
 let auth: any;
 let googleProvider: any;
 
+// Diagnostic helper to show exactly what's missing in a user-friendly way
+const missingEnvVars = [];
+if (!firebaseConfig.apiKey) missingEnvVars.push("VITE_FIREBASE_API_KEY");
+if (!firebaseConfig.authDomain) missingEnvVars.push("VITE_FIREBASE_AUTH_DOMAIN");
+if (!firebaseConfig.projectId) missingEnvVars.push("VITE_FIREBASE_PROJECT_ID");
+
+if (missingEnvVars.length > 0) {
+  console.warn("⚠️ Firebase incompleto. Añade estas variables en 'Settings' (icono de engranaje):", missingEnvVars.join(", "));
+}
+
 try {
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
-  googleProvider = new GoogleAuthProvider();
+  if (firebaseConfig.apiKey) {
+    app = initializeApp(firebaseConfig);
+    // Use environment variable for DB ID, or fallback to standard (default)
+    const databaseId = import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
+    db = getFirestore(app, databaseId);
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
+  }
 } catch (e) {
   console.error("Firebase init error:", e);
 }
@@ -51,41 +65,44 @@ export function subscribeToLeads(callback: (leads: any[]) => void) {
 }
 
 export async function saveLead(leadData: any) {
+  const data = sanitizeData(leadData);
+  
+  // 1. Always attempt Sheets Sync (Fast & Indirect)
+  fetch("/api/leads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  }).then(async res => {
+    const result = await res.json();
+    console.log("Sheets Sync Result:", result);
+  }).catch(e => console.error("Sheets Sync Error:", e));
+
+  // 2. Attempt Firebase if configured
   try {
-    // 1. Save to Firebase
-    if (!db) {
-      throw new Error("Firebase no configurado");
+    if (db) {
+      const leadsRef = collection(db, 'leads');
+      await addDoc(leadsRef, {
+        ...data,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      console.log("Lead saved successfully to Firebase");
     }
-    const leadsRef = collection(db, 'leads');
-    await addDoc(leadsRef, {
-      ...sanitizeData(leadData),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    console.log("Lead saved successfully to Firebase");
-
-    // 2. Sync with Google Sheets backend
-    fetch("/api/leads", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(leadData)
-    }).catch(e => console.error("Sheets Sync Error:", e));
-
   } catch (error) {
-    console.error("Error saving lead to Firebase:", error);
-    // Fallback to local storage if Firebase fails
-    const leads = JSON.parse(localStorage.getItem('car_leads') || '[]');
-    leads.push({ ...leadData, createdAt: new Date().toISOString(), fallback: true });
-    localStorage.setItem('car_leads', JSON.stringify(leads));
+    console.error("Firebase save failed:", error);
   }
+
+  // 3. Always fallback to local storage for Redundancy
+  const leads = JSON.parse(localStorage.getItem('car_leads') || '[]');
+  leads.push({ ...data, createdAt: new Date().toISOString() });
+  localStorage.setItem('car_leads', JSON.stringify(leads.slice(-50)));
 }
 
-export async function saveChatSession(userId: string, messages: any[]) {
+export async function saveChatSession(chatId: string, messages: any[]) {
   try {
     if (!db) return;
-    const chatRef = doc(db, 'chats', userId);
+    const chatRef = doc(db, 'chats', chatId);
     await setDoc(chatRef, {
-      userId,
       messages: sanitizeData(messages),
       updatedAt: serverTimestamp()
     }, { merge: true });

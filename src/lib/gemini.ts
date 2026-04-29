@@ -1,7 +1,15 @@
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Vehicle } from "../types";
-import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// The platform injects GEMINI_API_KEY into the environment. 
+// Following gemini-api skill: Always call from frontend using @google/genai.
+const geminiKey = process.env.GEMINI_API_KEY;
+
+if (!geminiKey) {
+  console.warn("GEMINI_API_KEY is not defined in the environment. AI features may not work.");
+}
+
+const ai = new GoogleGenAI({ apiKey: geminiKey || "" });
 
 export const searchInventoryFn = {
   name: "search_inventory",
@@ -85,59 +93,48 @@ export const registerLeadFn = {
 
 export function getSalesmanPrompt(inventory: Vehicle[]) {
   const inventarioTexto = inventory && inventory.length > 0 
-    ? inventory.map(v => `- ${v.year} ${v.make} ${v.model} | Precio: $${v.price.toLocaleString()} | Millaje: ${v.mileage} | ${v.specialOffer || ''} | Foto: ${v.image}`).join('\n')
+    ? inventory.map(v => `- ${v.year} ${v.make} ${v.model} | Precio: $${v.price.toLocaleString()} | Millaje: ${v.mileage} | Clase: ${v.category} | [Ver fotos](${v.image})`).join('\n')
     : "Inventario no disponible.";
 
-  return `Eres DealerAmigo, el asistente virtual de PR Automotive Group en Puerto Rico.
-**PRESENTACIÓN OBLIGATORIA**: Siempre, en tu primer mensaje o cuando sea apropiado, identifícate como el "Asistente Virtual" de PR Automotive Group.
+  return `Eres DealerAmigo, el asesor de ventas experto de PR Automotive Group en Carolina, Puerto Rico.
+
+Tu misión es transformar a cada visitante en un cliente satisfecho, destacando que somos el ÚNICO dealer con Garantía de 100,000 millas en usados.
 
 ---
 
-## REGLAS DE ORO (CRÍTICO)
-- **SÉ BREVE Y CONCISO**: No escribas más de 2 párrafos cortos (máximo 3 líneas cada uno).
-- **ESPERA REACCIÓN**: Haz una pregunta a la vez y espera a que el usuario responda. No satures de información.
-- **AUTÉNTICO**: Mantén tu personalidad pero sé directo. No pierdas tiempo en explicaciones largas.
+## REGLAS DE NEGOCIO (¡ÚSALAS PARA CERRAR!)
+- **GARANTÍA**: 100,000 millas en unidades usadas (Diferenciador #1).
+- **CRÉDITO**: Aceptamos trade-in con o sin deuda. Ayudamos a clientes con crédito afectado o excelente.
+- **ENTREGA**: Entregamos en toda la isla con tanque lleno.
+- **UBICACIÓN**: Marginal Los Ángeles, Carolina (frente al aeropuerto SJU).
 
 ---
 
-## TU ESTILO
-- Sé amable pero ve al grano.
-- Si el cliente te cuenta algo personal, responde brevemente y retoma el negocio con una pregunta corta.
-- Dialecto de Puerto Rico natural.
+## TU ESTILO (BORICUA EXPERTO)
+- **BREVEDAD**: Máximo 2 o 3 líneas por mensaje. No aburras al cliente.
+- **CONTROL**: Si el cliente pregunta por algo genérico, ofrece 2 opciones del inventario de inmediato.
+- **FOTOS**: Siempre que menciones un auto, incluye el link así: [Ver fotos y detalles]({url}).
+- **CIERRE**: Después de dar información, pregunta: "¿Te gustaría pasar a verlo hoy o prefieres mañana temprano?" o "¿Buscas pago mensual o financiamiento?"
 
 ---
 
-## MANEJO DE FOTOS
-- Si el cliente pregunta por un auto o muestra interés, DEBES mostrar la foto de inmediato: ![Foto](URL_DE_LA_FOTO)
-- No prometas enviarlas "luego" si ya tienes el URL en el inventario.
-
----
-
-## CAPTURA DE DATA
-- Pide nombre y teléfono para enviar detalles VIP o agendar: "¿Me podrías compartir tu nombre y teléfono para enviarte los detalles completos de este auto por WhatsApp?"
-- **CONFIRMACIÓN**: Una vez recibas los datos, confirma: "Perfecto [Nombre], ya guardé tu información para que un experto te contacte."
-
----
-
-## QUIÉNES SOMOS
-Dealer en Marginal Los Ángeles, Carolina (frente al SJU).
-Diferenciadores: Garantía 100k millas, tanque lleno, entrega en toda la isla.
+## CALIFICACIÓN RÁPIDA (LEAD)
+Si el cliente parece interesado, necesitas capturar sus datos para "separar la unidad" o "enviarle la pre-aprobación":
+1. Nombre
+2. Teléfono
+3. ¿Cómo está el crédito? (Bien, regular o algún detalle)
+4. ¿Entrega inicial disponible?
 
 ---
 
 ## INVENTARIO DISPONIBLE
 ${inventarioTexto}
 
-REGLA: Si le interesa una unidad, enfócate en esa. No lo abrumes con otras a menos que lo pida.
-
 ---
 
-## REGLAS TÉCNICAS
-- Añade: "sujeto a aprobación de crédito" al hablar de ofertas o pagos.
-- NO inventes ofertas.
-- Siempre intenta cerrar la cita: "¿Te queda mejor hoy o mañana?"
-
-CONFIRMADO:[nombre]|[telefono]|[presupuesto]|[vehiculo]|[credito]|[dealer]`;
+## COMUNICACIÓN TÉCNICA
+Cuando tengas Nombre y Teléfono, DEBES generar la confirmación al final de tu mensaje usando este formato EXACTO:
+CITA_CONFIRMADA:[nombre]|[telefono]|[presupuesto]|[vehiculo]|[credito]|PR Automotive Group`;
 }
 
 export class GeminiChat {
@@ -158,36 +155,45 @@ export class GeminiChat {
   }
 
   async sendMessage(message: string) {
+    if (!geminiKey) {
+      throw new Error("No se ha configurado la llave de API de Gemini. Por favor verifica la configuración en AI Studio.");
+    }
+
     if (message && message.trim()) {
       this.history.push({ role: "user", parts: [{ text: message }] });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: this.history,
-      config: {
-        systemInstruction: getSalesmanPrompt(this.inventory),
-        tools: [{
-          functionDeclarations: [
-            searchInventoryFn,
-            requestSpecificCarFn,
-            showBookingFormFn,
-            scheduleAppointmentFn,
-            registerLeadFn
-          ]
-        }]
-      }
-    });
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: this.history,
+        config: {
+          systemInstruction: getSalesmanPrompt(this.inventory),
+          tools: [{
+            functionDeclarations: [
+              searchInventoryFn,
+              requestSpecificCarFn,
+              showBookingFormFn,
+              scheduleAppointmentFn,
+              registerLeadFn
+            ]
+          }]
+        }
+      });
 
-    const botParts = response.candidates?.[0]?.content?.parts || [];
-    this.history.push({ role: "model", parts: botParts });
+      const botParts = response.candidates?.[0]?.content?.parts || [];
+      this.history.push({ role: "model", parts: botParts });
 
-    return {
-      response: {
-        text: () => response.text || "",
-        functionCalls: () => response.functionCalls || null
-      }
-    };
+      return {
+        response: {
+          text: () => response.text || "",
+          functionCalls: () => response.functionCalls || []
+        }
+      };
+    } catch (error: any) {
+      console.error("Gemini AI API Error:", error);
+      throw error;
+    }
   }
 
   public addFunctionResponse(name: string, content: any) {
