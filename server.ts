@@ -2,100 +2,174 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import dotenv from "dotenv";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 
 dotenv.config();
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+// Initialize AI Clients lazily
+let genAI: GoogleGenAI | null = null;
+let anthropic: Anthropic | null = null;
 
-// Google Sheets & Apps Script URLs
-const INVENTORY_CSV_URL = "https://docs.google.com/spreadsheets/d/1eP8zbvY5Ifsno2g2AsJoc5YV4q-PxNxzQaM6SSNy-dk/export?format=csv";
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4v2NF-Vv-7Ge-T7MPqfAfUD5zDemwl_PJXybg6oyu702i8imxQKMhyTfdzByr45hyMg/exec";
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY no configurada. Por favor, ve a la pestaña Settings.");
+  }
+  if (!genAI) {
+    genAI = new GoogleGenAI({ apiKey });
+  }
+  return genAI;
+}
+
+function getAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error("ANTHROPIC_API_KEY no configurada. Por favor, ve a la pestaña Settings.");
+  }
+  if (!anthropic) {
+    anthropic = new Anthropic({ apiKey });
+  }
+  return anthropic;
+}
+
+// Google Sheets & Apps Script URLs (Defaults)
+const INVENTORY_SCRIPT_URL = process.env.INVENTORY_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbx9YrI32v4IZP5PHj6F3rBFZ4d-0jhhM3ki5EtjtwI7YW5vLyEVUIZ1BSVHFGzMXyeabQ/exec";
+const LEADS_SCRIPT_URL = process.env.LEADS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbxyPVn1moxv8CZR6Fp-n2QdbFs8DlDJZfCiXiZAROiNKao2U21xoVKwJ73H3N0dYug/exec";
+
+// Security & Consistency (Adjusted for user's proxy preference)
+const VALID_TOKEN = process.env.APPS_SCRIPT_TOKEN || "dealeramigo-pr-2026-xK9mPqR";
+
+// Stable models
+const CLAUDE_MODEL = "claude-3-5-sonnet-20241022";
+const GEMINI_MODEL = "gemini-1.5-flash"; // Standard stable flash for Gemini AI Studio
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '1mb' }));
 
   // API Routes
   app.get("/api/health", (req, res) => {
-    res.json({ 
-      status: "ok"
-    });
+    res.json({ status: "ok" });
   });
 
-  // Gemini Chat Proxy
-  app.post("/api/chat", async (req, res) => {
-    try {
-      const { message, history, systemInstruction, tools } = req.body;
-      
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("Missing GEMINI_API_KEY in environment variables.");
-      }
-
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-        systemInstruction: systemInstruction
-      });
-
-      const chat = model.startChat({
-        history: history || [],
-        tools: tools || [],
-      });
-
-      const result = await chat.sendMessage(message);
-      const response = await result.response;
-      
-      res.json({
-        text: response.text(),
-        functionCalls: response.functionCalls() || []
-      });
-    } catch (error: any) {
-      console.error("[Gemini API Error]:", error.message);
-      res.status(500).json({ 
-        error: "Internal Server Error during AI processing",
-        details: error.message 
-      });
-    }
-  });
-
-  // Fetch Inventory directly via CSV
+  // Inventory Proxy (Using authorized GET)
   app.get("/api/inventory", async (req, res) => {
     try {
-      const response = await fetch(INVENTORY_CSV_URL);
-      if (!response.ok) throw new Error("No se pudo acceder al CSV de la hoja.");
-      const csvText = await response.text();
-      res.send(csvText); 
-    } catch (error: any) {
-      console.error("[Inventory Error]:", error.message);
-      res.status(500).json({ error: "Failed to load inventory" });
-    }
-  });
+      console.log(`[Inventory] Fetching data via GET...`);
+      
+      const url = new URL(INVENTORY_SCRIPT_URL);
+      url.searchParams.append("_token", VALID_TOKEN);
 
-  // Lead Registration via Apps Script
-  app.post("/api/leads", async (req, res) => {
-    try {
-      const response = await fetch(APPS_SCRIPT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req.body),
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: { "Accept": "application/json" },
         redirect: "follow"
       });
 
-      // El App Script a veces no devuelve JSON válido o redirecciona
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      console.error("[Inventory API Error]:", error.message);
+      res.status(500).json({ error: "Error de conexión con el motor de inventario", details: error.message });
+    }
+  });
+
+  // Lead Registration Proxy (Matching Apps Script fields)
+  app.post("/api/leads", async (req, res) => {
+    try {
+      console.log(`[Leads] Processing lead registration...`);
+      const leadData = req.body;
+
+      // Mapping common names to Apps Script names exactly as expected by your GS saveLead()
+      const payload = {
+        _token: VALID_TOKEN,
+        nombre: leadData.name || leadData.nombre || "",
+        telefono: leadData.phone || leadData.telefono || "",
+        email: leadData.email || "",
+        presupuesto: leadData.budget || leadData.presupuesto || leadData.presupuesto_mensual || "",
+        vehiculo: leadData.vehicleInterest || leadData.vehiculo_interes || leadData.vehiculo || "",
+        notas: leadData.notes || leadData.notas || leadData.resumen || "",
+        // Extended fields for the dedicated leads sheet if needed
+        tipo_cliente: leadData.clientType || leadData.tipo_cliente || "",
+        fuente: leadData.source || leadData.fuente || "Web Chat",
+        agendo_cita: leadData.appointmentScheduled || leadData.agendo_cita || "No",
+        fecha_cita: leadData.appointmentDate || leadData.fecha_cita || ""
+      };
+
+      const response = await fetch(LEADS_SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        redirect: "follow"
+      });
+
       const text = await response.text();
       try {
         const data = JSON.parse(text);
         res.json(data);
       } catch (e) {
-        res.json({ success: true, message: "Lead enviado (respuesta no-JSON)" });
+        res.json({ success: true, message: text || "Lead registrado" });
       }
     } catch (error: any) {
-      console.error("[Apps Script Error] saving lead:", error.message);
-      res.json({ success: false, error: error.message });
+      console.error("[Leads API Error]:", error.message);
+      res.status(500).json({ success: false, error: "Error al registrar Lead" });
     }
+  });
+
+  // Chat Proxy (Apps Script Motor)
+  app.post("/api/chat", async (req, res) => {
+    const { message, history } = req.body;
+    
+    try {
+      console.log(`[Chat] Routing message to motor...`);
+      
+      const payload = {
+        _token: VALID_TOKEN,
+        messages: (history || []).concat({ role: 'user', content: message })
+      };
+
+      const response = await fetch(INVENTORY_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: "follow"
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Apps Script Error (${response.status}): ${errText.substring(0, 100)}`);
+      }
+      
+      const json: any = await response.json();
+      
+      // The Apps Script returns the Claude message structure
+      if (json.content && Array.isArray(json.content) && json.content[0]?.text) {
+        return res.json({ text: json.content[0].text });
+      }
+
+      // Fallback for other formats
+      const reply = json.reply || json.text || (typeof json === 'string' ? json : "Respuesta recibida en formato desconocido.");
+      res.json({ text: reply });
+
+    } catch (error: any) {
+      console.error("[Chat API Error]:", error.message);
+      res.status(500).json({ error: "Error de comunicación con el motor inteligente" });
+    }
+  });
+
+  // Catch-all for missing API routes to prevent HTML fallback
+  app.all("/api/*", (req, res) => {
+    console.warn(`[404] API Route not found: ${req.method} ${req.url}`);
+    res.status(404).json({ 
+      error: "Ruta de API no encontrada", 
+      method: req.method,
+      path: req.url 
+    });
   });
 
   // Vite middleware for development
@@ -114,8 +188,15 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[READY] Server running on http://localhost:${PORT}`);
+    console.log(`[ENV] Gemini Key: ${process.env.GEMINI_API_KEY ? 'Set' : 'Missing'}`);
+    console.log(`[ENV] Anthropic Key: ${process.env.ANTHROPIC_API_KEY ? 'Set' : 'Missing'}`);
   });
 }
+
+// Global error handler for unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 startServer();

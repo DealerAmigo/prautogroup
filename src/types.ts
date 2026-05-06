@@ -2,6 +2,7 @@ export interface Vehicle {
   id: string;
   make: string;
   model: string;
+  trim?: string;
   year: number;
   price: number;
   image: string;
@@ -11,6 +12,8 @@ export interface Vehicle {
   exteriorColor?: string;
   interiorColor?: string;
   transmission?: string;
+  driveTrain?: string;
+  engine?: string;
   mpg?: string;
   specialOffer?: string;
   isAvailable: boolean;
@@ -32,5 +35,7 @@ export interface Lead {
   email?: string;
   phone?: string;
   interest?: string;
+  monthlyBudget?: string;
+  town?: string;
   createdAt: number;
 }

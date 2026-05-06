@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Car, ChevronRight, MapPin, ShieldCheck, Fuel, Phone, MessageSquare, Menu, X, Sparkles, RotateCcw } from 'lucide-react';
 import { ChatMessage, Vehicle } from './types';
-import { createSalesmanChat } from './lib/gemini';
+import { createSalesmanChat } from './lib/ai';
 import { getInventory, searchVehicles } from './lib/inventory';
 import { createCalendarEvent, AppointmentDetails } from './lib/calendar';
 import BookingForm from './components/BookingForm';
 import LeadsDashboard from './components/LeadsDashboard';
-import { saveLead, saveChatSession } from './lib/firebase';
+import { saveLead, saveChatSession } from './lib/leads';
 import ReactMarkdown from 'react-markdown';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -37,8 +37,59 @@ export default function App() {
   const [isAdminView, setIsAdminView] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'inventory'>('chat');
   
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [vehiclePitch, setVehiclePitch] = useState<string>('');
+  const [isPitching, setIsPitching] = useState(false);
+  
   const chatRef = useRef<any>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  const handleImageClick = async (imageUrl: string, vehicleData?: Vehicle) => {
+    let vehicle = vehicleData || inventory.find(v => v.image === imageUrl);
+    
+    if (!vehicle && imageUrl.includes('http')) {
+      // Trying fuzzy match if exact image fails
+      vehicle = inventory.find(v => imageUrl.includes(v.id) || v.image.includes(imageUrl.split('?')[0]));
+    }
+
+    setSelectedVehicle(vehicle || null);
+    setSelectedImage(imageUrl);
+    setVehiclePitch('');
+    
+    if (vehicle) {
+      setIsPitching(true);
+      // Track lead
+      saveLead({
+        type: 'image_click',
+        vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        price: vehicle.price,
+        imageUrl: vehicle.image,
+        source: 'grid_click'
+      });
+
+      // Quick "Reactive" Sales Pitch from AI
+      try {
+        const prompt = `Vende este auto rápidamente resaltando 3 ventajas competitivas específicas en Puerto Rico para un ${vehicle.year} ${vehicle.make} ${vehicle.model} de $${vehicle.price.toLocaleString()}. Sé breve, persuasivo y usa emojis.`;
+        const resp = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: prompt,
+            history: [],
+            systemInstruction: "Eres un cerrador de ventas experto de PR Automotive Group. Tu meta es convencer al cliente de que este es el auto perfecto."
+          })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setVehiclePitch(data.text);
+        }
+      } catch (e) {
+        console.error("Failed to get reactive pitch:", e);
+      } finally {
+        setIsPitching(false);
+      }
+    }
+  };
 
   const loadInventory = async () => {
     setIsLoadingInventory(true);
@@ -104,6 +155,12 @@ export default function App() {
     
     init();
   }, []);
+
+  useEffect(() => {
+    if (inventory.length > 0 && chatRef.current) {
+      chatRef.current.setInventory(inventory);
+    }
+  }, [inventory]);
 
   // Persistence effect
   useEffect(() => {
@@ -232,34 +289,54 @@ export default function App() {
       }
 
       const responseTextRaw = typeof response.text === 'function' ? response.text() : (response.text || '');
-      const responseText = responseTextRaw || '';
+      let responseText = responseTextRaw || '';
+      
+      // Handle LEAD_DATA tag
+      if (responseText.includes('LEAD_DATA:')) {
+        const parts = responseText.split('LEAD_DATA:');
+        responseText = parts[0].trim();
+        try {
+          const leadJson = parts[1].trim();
+          const leadData = JSON.parse(leadJson);
+          saveLead({
+            ...leadData,
+            type: 'ai_lead_capture',
+            fullText: responseTextRaw
+          });
+          userMsg.intent = 'Lead Capturado';
+        } catch (e) {
+          console.error("Error parsing LEAD_DATA JSON:", e);
+        }
+      }
+
+      // Handle MOSTRAR_VEHICULO tag
+      if (responseText.includes('MOSTRAR_VEHICULO:')) {
+        const parts = responseText.split('MOSTRAR_VEHICULO:');
+        responseText = parts[0].trim();
+        const vehicleInfo = parts[1].trim();
+        
+        // Try to find the vehicle in inventory
+        const [year, make, ...modelParts] = vehicleInfo.replace('[', '').replace(']', '').split(' ');
+        const model = modelParts.join(' ');
+        
+        const found = inventory.find(v => 
+          v.year.toString() === year && 
+          v.make.toLowerCase() === make?.toLowerCase() && 
+          v.model.toLowerCase().includes(model?.toLowerCase())
+        );
+        
+        if (found) {
+          vehiclesToShow = [found];
+        }
+      }
       
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: (responseText.split('CITA_CONFIRMADA:')[0] || responseText).trim() || (vehiclesToShow.length > 0 ? '¡Excelente! Aquí tienes las unidades disponibles:' : 'Entendido. ¿En qué más puedo ayudarte?'),
+        content: responseText || (vehiclesToShow.length > 0 ? '¡Excelente! Aquí tienes la unidad disponible:' : 'Entendido. ¿En qué más puedo ayudarte?'),
         timestamp: Date.now(),
         vehicles: vehiclesToShow.length > 0 ? vehiclesToShow : undefined
       };
-
-      // Detect CITA_CONFIRMADA
-      if (responseText && responseText.includes('CITA_CONFIRMADA:')) {
-        const parts = responseText.split('CITA_CONFIRMADA:');
-        if (parts.length > 1) {
-          const appointmentData = parts[1].trim();
-          const [nombre, telefono, presupuesto, vehiculo, credito, dealer] = appointmentData.split('|');
-          saveLead({
-            type: 'appointment',
-            nombre,
-            telefono,
-            presupuesto,
-            vehiculo,
-            credito,
-            dealer,
-            fullText: responseText
-          });
-        }
-      }
 
       setMessages(prev => [...prev, botMsg]);
     } catch (error: any) {
@@ -284,7 +361,7 @@ export default function App() {
         sessionStorage.setItem('chat-session-id', sessionId);
       }
       
-      import('./lib/firebase').then(({ saveChatSession }) => {
+      import('./lib/leads').then(({ saveChatSession }) => {
         if (saveChatSession) {
           saveChatSession(sessionId, messages);
         }
@@ -313,27 +390,185 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setSelectedImage(null)}
-            className="fixed inset-0 z-[100] bg-black/98 flex items-center justify-center p-4 md:p-12 cursor-zoom-out backdrop-blur-2xl"
+            className="fixed inset-0 z-[100] bg-black/98 flex items-center justify-center p-4 md:p-12 backdrop-blur-2xl overflow-y-auto"
           >
+            <div className="absolute inset-0 cursor-zoom-out" onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }} />
+            
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, rotate: -2 }}
-              animate={{ scale: 1, opacity: 1, rotate: 0 }}
-              exit={{ scale: 0.9, opacity: 0, rotate: 2 }}
-              className="relative max-w-full max-h-full"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-0 bg-[#080808] rounded-[3rem] overflow-hidden border border-white/10 shadow-[0_80px_160px_rgba(0,0,0,0.9)]"
             >
-              <img 
-                src={selectedImage} 
-                alt="Enlarged view" 
-                className="max-w-full max-h-[90vh] object-contain rounded-3xl shadow-[0_50px_100px_rgba(0,0,0,0.8)] border border-white/20" 
-              />
-              <button 
-                onClick={() => setSelectedImage(null)}
-                className="absolute -top-16 right-0 text-white flex items-center gap-3 hover:text-rose-500 transition-all bg-white/5 px-6 py-3 rounded-full border border-white/10 hover:bg-white/10"
-              >
-                <X size={22} />
-                <span className="text-xs font-black uppercase tracking-widest">Cerrar Galería</span>
-              </button>
+              <div className="relative aspect-square lg:aspect-auto h-full min-h-[400px] group/img">
+                <img 
+                  src={selectedImage} 
+                  alt="Enlarged view" 
+                  className="w-full h-full object-cover transition-transform duration-1000 group-hover/img:scale-105" 
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                
+                <div className="absolute bottom-10 left-10 right-10">
+                   <div className="flex items-center gap-4 bg-black/40 backdrop-blur-xl p-6 rounded-3xl border border-white/10">
+                      <div className="w-14 h-14 rounded-2xl bg-rose-600 flex items-center justify-center shrink-0 shadow-lg shadow-rose-600/30">
+                        <Car size={32} className="text-white" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-500 mb-1">Unidad Certificada</p>
+                        <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">PR Automotive Premium</h3>
+                      </div>
+                   </div>
+                </div>
+
+                <button 
+                  onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }}
+                  className="absolute top-8 left-8 text-white bg-black/50 backdrop-blur-md p-4 rounded-full hover:bg-rose-600 transition-all border border-white/10 lg:hidden"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-8 md:p-16 flex flex-col justify-between bg-[#0a0a0a] relative">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-rose-600/5 blur-[120px] rounded-full pointer-events-none" />
+                
+                <div>
+                  <div className="flex items-center justify-between mb-10">
+                    <div className="flex items-center gap-3">
+                      <div className="h-[2px] w-12 bg-rose-600" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.5em] text-rose-500">Beneficios & Ventajas</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center hover:bg-white/5 transition-colors">
+                        <RotateCcw size={16} className="text-slate-500" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedVehicle ? (
+                    <div className="space-y-12">
+                      <div>
+                        <motion.h2 
+                          initial={{ x: -20, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter text-white leading-[0.9] mb-4"
+                        >
+                          {selectedVehicle.year} <br />
+                          <span className="text-rose-600 underline decoration-white/10 underline-offset-8">{selectedVehicle.make}</span> <br />
+                          {selectedVehicle.model}
+                        </motion.h2>
+                        <div className="flex items-center gap-6">
+                          <div className="flex flex-col">
+                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Precio Especial PR</span>
+                             <span className="text-4xl font-mono font-black text-white tracking-tight">${selectedVehicle.price.toLocaleString()}</span>
+                          </div>
+                          <div className="h-10 w-[1px] bg-white/10" />
+                          <div className="bg-emerald-500/10 px-4 py-2 rounded-xl flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                             <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Stock Disponible</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <BenefitCard icon={<ShieldCheck className="text-rose-500" />} title="Transmisión" desc={selectedVehicle.transmission || "Automática certificada."} />
+                        <BenefitCard icon={<Sparkles className="text-rose-500" />} title="Condición" desc={`${selectedVehicle.mileage} - Certificación 115 puntos.`} />
+                        <BenefitCard icon={<Fuel className="text-rose-500" />} title="Eficiencia MPG" desc={selectedVehicle.mpg || "Consumo líder en su categoría."} />
+                        <BenefitCard icon={<MapPin className="text-rose-500" />} title="Color" desc={`Ext: ${selectedVehicle.exteriorColor || 'N/A'} | Int: ${selectedVehicle.interiorColor || 'N/A'}`} />
+                      </div>
+
+                      <div className="bg-white/[0.03] p-8 rounded-[2rem] border border-white/5">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-6 flex items-center gap-3">
+                           <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                           Especificaciones Técnicas
+                        </h4>
+                        <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
+                          <SpecItem label="Marca" value={selectedVehicle.make} />
+                          <SpecItem label="Modelo" value={selectedVehicle.model} />
+                          {selectedVehicle.trim && <SpecItem label="Trim/Submodelo" value={selectedVehicle.trim} />}
+                          <SpecItem label="Año" value={selectedVehicle.year.toString()} />
+                          <SpecItem label="Precio" value={`$${selectedVehicle.price.toLocaleString()}`} />
+                          <SpecItem label="Millaje" value={selectedVehicle.mileage || "N/A"} />
+                          <SpecItem label="Categoría" value={selectedVehicle.category || "N/A"} />
+                          <SpecItem label="Motor" value={selectedVehicle.engine || "N/A"} />
+                          <SpecItem label="Tracción" value={selectedVehicle.driveTrain || "N/A"} />
+                          <SpecItem label="Transmisión" value={selectedVehicle.transmission || "N/A"} />
+                        </ul>
+                      </div>
+
+                      {selectedVehicle.description && (
+                        <div className="bg-rose-500/5 p-8 rounded-[2rem] border border-rose-500/10">
+                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-rose-500 mb-4 flex items-center gap-3">
+                             Notas del Especialista
+                          </h4>
+                          <p className="text-slate-400 text-sm leading-relaxed italic">
+                            "{selectedVehicle.description}"
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="bg-white/[0.02] p-8 rounded-[2rem] border border-white/5 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-6 opacity-20 group-hover:rotate-12 transition-transform duration-700">
+                          <Sparkles className="text-rose-500" size={50} />
+                        </div>
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600 mb-6 flex items-center gap-3">
+                           <div className="w-2 h-2 bg-rose-600 rounded-full" />
+                           DealerAmigo AI Sales Pitch
+                        </h4>
+                        
+                        {isPitching ? (
+                          <div className="flex flex-col gap-4 py-4">
+                            <div className="h-4 w-3/4 bg-white/5 rounded-full animate-pulse" />
+                            <div className="h-4 w-full bg-white/5 rounded-full animate-pulse" />
+                            <div className="h-4 w-1/2 bg-white/5 rounded-full animate-pulse" />
+                          </div>
+                        ) : vehiclePitch ? (
+                          <p className="text-slate-200 text-xl leading-relaxed italic font-medium tracking-tight">
+                            {vehiclePitch}
+                          </p>
+                        ) : (
+                          <p className="text-slate-400 text-lg leading-relaxed italic">
+                            "{selectedVehicle.description}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-20 text-center">
+                      <Sparkles className="mx-auto text-rose-600 mb-6 animate-pulse" size={60} />
+                      <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-xs">Analizando ventajas competitivas en tiempo real...</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-16 flex flex-col sm:flex-row gap-5 relative z-10">
+                  <button 
+                    onClick={() => {
+                      if (selectedVehicle) {
+                        handleSend(`Me interesa el ${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}. ¿Cuáles son los próximos pasos para el financiamiento?`);
+                        setSelectedImage(null);
+                        setSelectedVehicle(null);
+                      }
+                    }}
+                    className="flex-1 bg-white text-black font-black py-7 rounded-3xl text-xs uppercase tracking-[0.3em] transition-all hover:bg-rose-600 hover:text-white shadow-2xl shadow-white/5 active:scale-95 group/btn"
+                  >
+                    Hablar con un Experto 
+                    <ChevronRight size={16} className="inline ml-2 group-hover/btn:translate-x-2 transition-transform" />
+                  </button>
+                  <button 
+                    onClick={() => window.open(`https://wa.me/19397152900?text=Hola! Me interesa el ${selectedVehicle?.year} ${selectedVehicle?.make} ${selectedVehicle?.model}`, '_blank')}
+                    className="px-10 py-7 bg-emerald-600 text-white font-black rounded-3xl text-xs uppercase tracking-[0.3em] hover:bg-emerald-500 transition-all shadow-2xl shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    WhatsApp <MessageSquare size={18} />
+                  </button>
+                </div>
+
+                <button 
+                  onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }}
+                  className="absolute top-12 right-12 text-slate-700 hover:text-white transition-colors"
+                >
+                  <X size={32} />
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -447,7 +682,7 @@ export default function App() {
                     handleSend(messageText);
                     if (window.innerWidth < 768) setActiveTab('chat');
                   }} 
-                  onImageClick={setSelectedImage}
+                  onImageClick={handleImageClick}
                 />
               ))}
             </AnimatePresence>
@@ -550,7 +785,7 @@ export default function App() {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 3xl:grid-cols-3 gap-10 lg:gap-14">
               {inventory.map(v => (
-                <VehicleCard key={v.id} vehicle={v} onImageClick={setSelectedImage} />
+                <VehicleCard key={v.id} vehicle={v} onImageClick={handleImageClick} />
               ))}
             </div>
 
@@ -652,7 +887,7 @@ export default function App() {
   );
 }
 
-function MessageBubble({ message, onVehicleClick, onImageClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string) => void }) {
+function MessageBubble({ message, onVehicleClick, onImageClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string, v?: Vehicle) => void }) {
   const isBot = message.role === 'assistant';
   const hasVehicles = message.vehicles && message.vehicles.length > 0;
   
@@ -680,9 +915,10 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
                 <span 
                   className="block my-6 rounded-2xl overflow-hidden border border-white/10 shadow-2xl cursor-pointer hover:border-rose-500/50 transition-all group relative max-w-sm"
                   onClick={() => {
-                    onImageClick?.(src || '');
+                    const v = message.vehicles?.find(veh => veh.image === src || veh.model === alt);
+                    onImageClick?.(src || '', v);
                     // Track interest on image click
-                    import('./lib/firebase').then(({ saveLead }) => {
+                    import('./lib/leads').then(({ saveLead }) => {
                       if (saveLead) {
                         saveLead({
                           type: 'image_interaction',
@@ -744,7 +980,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
                     <div 
                       onClick={(e) => {
                         e.stopPropagation();
-                        onImageClick?.(v.image);
+                        onImageClick?.(v.image, v);
                       }}
                       className="cursor-zoom-in"
                     >
@@ -802,7 +1038,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
   );
 }
 
-function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick?: (url: string) => void }) {
+function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick?: (url: string, v?: Vehicle) => void }) {
   const estimatedPayment = Math.round((vehicle.price * 1.1) / 72); // Super simple estimate
 
   return (
@@ -810,11 +1046,11 @@ function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick
       initial={{ opacity: 0, y: 30 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      className="bg-[#0c0c0c] border border-white/[0.08] rounded-[2.5rem] overflow-hidden group hover:border-rose-600/30 transition-all duration-700 shadow-3xl"
+      className="bg-[#0c0c0c] border border-white/[0.08] rounded-[2.5rem] overflow-hidden group hover:border-rose-600/30 transition-all duration-700 shadow-3xl flex flex-col h-full"
     >
-      <div className="h-72 bg-[#1a1a1a] overflow-hidden relative">
+      <div className="h-72 bg-[#1a1a1a] overflow-hidden relative shrink-0">
         <div 
-          onClick={() => onImageClick?.(vehicle.image)}
+          onClick={() => onImageClick?.(vehicle.image, vehicle)}
           className="cursor-zoom-in"
         >
           <img 
@@ -897,12 +1133,38 @@ function VehicleCard({ vehicle, onImageClick }: { vehicle: Vehicle, onImageClick
             WhatsApp
             <MessageSquare size={16} className="group-hover/btn:scale-110 transition-transform" />
           </button>
-          <button className="w-16 bg-white/5 border border-white/10 rounded-[1.5rem] flex items-center justify-center text-white hover:bg-white/10 transition-all">
-            <Sparkles size={20} className="text-rose-500" />
+          <button 
+            onClick={() => onImageClick?.(vehicle.image)}
+            className="w-16 bg-white/5 border border-white/10 rounded-[1.5rem] flex items-center justify-center text-white hover:bg-rose-600 transition-all"
+          >
+            <Sparkles size={20} className="text-rose-500 group-hover:text-white" />
           </button>
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function SpecItem({ label, value }: { label: string, value: string }) {
+  return (
+    <li className="flex items-center justify-between border-b border-white/5 pb-2">
+      <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">{label}</span>
+      <span className="text-sm font-bold text-slate-200 tracking-tight">{value}</span>
+    </li>
+  );
+}
+
+function BenefitCard({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
+  return (
+    <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-colors">
+      <div className="w-10 h-10 rounded-xl bg-rose-600/10 flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div>
+        <h5 className="text-sm font-black uppercase tracking-widest text-white mb-1">{title}</h5>
+        <p className="text-xs text-slate-500 font-bold leading-tight">{desc}</p>
+      </div>
+    </div>
   );
 }
 

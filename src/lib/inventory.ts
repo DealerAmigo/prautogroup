@@ -153,73 +153,57 @@ export async function getInventory(): Promise<Vehicle[]> {
     const response = await fetch("/api/inventory");
     if (!response.ok) throw new Error("No se pudo cargar el inventario.");
     
-    const csvText = await response.text();
-    const rows = csvText.split('\n').filter(row => row.trim() !== '');
+    const data = await response.json();
+    console.log("Inventario recuperado:", data.status, Array.isArray(data.inventario) ? `Items: ${data.inventario.length}` : "Items: 0");
     
-    if (rows.length < 2) return MOCK_INVENTORY;
+    if (data.status === 'ok' && Array.isArray(data.inventario)) {
+      return data.inventario.map((item: any, index: number) => {
+        // Map exactly as they come from Apps Script/Sheets
+        const yearStr = String(item.ao || item.year || item.ano || item.ao_del_vehiculo || "2024");
+        const year = parseInt(yearStr) || 2024;
+        const make = item.marca || item.make || "PR Automotive";
+        const model = item.modelo || item.model || "";
+        // Slugified from "Sub-modelo / Trim Level" -> "submodelotrim_level" or "sub_modelo_trim_level"
+        const trim = item.submodelotrim_level || item.sub_modelo_trim_level || item.trim || item.clase_o_trim || "";
+        const priceStr = String(item.precio || item.precio_venta || item.price || "0").replace(/[^0-9]/g, '');
+        const price = parseInt(priceStr) || 0;
+        const image = item.fotoweblink || item.foto_web_link || item.foto || item.image || "";
+        const category = item.clase || item.category || item.tipo_de_vehiculo || "";
+        const desc = item.descripcion || item.descripcion_o_notas || item.desc || "";
+        const mpg = item.mpg || "";
+        const disp = (item.disponibles || item.disponible || "").toLowerCase();
+        
+        // Handle slugified special chars
+        const transmission = item.transmisin || item.transmision || item.transmission || "";
+        const drive = item.traccion || item.traccin || item.drive || "";
+        const extColor = item.color || item.color_exterior || item.exterior || "";
+        const intColor = item.color_interior || item.interior || "";
+        const motor = item.motor || "";
 
-    // Mapping headers to indexes
-    const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
-    
-    const getIdx = (name: string) => headers.findIndex(h => h.replace(/\s+/g, '').includes(name.toLowerCase()));
+        return {
+          id: String(item.vin || index), // Use VIN if available, otherwise index
+          make,
+          model: trim ? `${model} ${trim}` : model,
+          trim,
+          year,
+          price,
+          image: image.startsWith('http') ? image : "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800",
+          description: desc || `${category} certificado con garantía de hasta 100k millas.`,
+          mileage: item.millaje || item.millaje_o_km || item.mileage || "0",
+          category,
+          mpg,
+          specialOffer: desc ? "Oferta Especial" : "",
+          isAvailable: disp !== 'no' && disp !== 'no disponible',
+          transmission,
+          exteriorColor: extColor,
+          interiorColor: intColor,
+          driveTrain: drive,
+          engine: motor
+        };
+      });
+    }
 
-    const idx = {
-      year: getIdx('año'),
-      make: getIdx('marca'),
-      model: getIdx('modelo'),
-      trim: getIdx('sub-modelo'),
-      price: getIdx('precio'),
-      mileage: getIdx('millaje'),
-      image: getIdx('fotoweblink'),
-      category: getIdx('clase'),
-      desc: getIdx('descripcion'),
-      mpg: getIdx('mpg'),
-      disp: getIdx('disponibles')
-    };
-
-    const inventory = rows.slice(1).map((row, index) => {
-      // Split CSV keeping quotes in mind
-      const values: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < row.length; i++) {
-        const char = row[i];
-        if (char === '"') inQuotes = !inQuotes;
-        else if (char === ',' && !inQuotes) {
-          values.push(current.trim());
-          current = '';
-        } else current += char;
-      }
-      values.push(current.trim());
-
-      const clean = (val: string) => (val || "").replace(/^"|"$/g, '').trim();
-      
-      const priceStr = clean(values[idx.price]) || "0";
-      const price = parseInt(priceStr.replace(/[^0-9]/g, '')) || 0;
-      const year = parseInt(clean(values[idx.year]) || "2024");
-      const make = clean(values[idx.make]) || "PR Automotive";
-      const model = clean(values[idx.model]);
-      const trim = clean(values[idx.trim]);
-      const image = clean(values[idx.image]);
-      const category = clean(values[idx.category]);
-
-      return {
-        id: String(index),
-        make,
-        model: trim ? `${model} ${trim}` : model,
-        year,
-        price,
-        image: image.startsWith('http') ? image : "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?auto=format&fit=crop&q=80&w=800",
-        description: clean(values[idx.desc]) || `${category} certificado con garantía.`,
-        mileage: clean(values[idx.mileage]) || "Bajo millaje",
-        category,
-        mpg: clean(values[idx.mpg]) || "",
-        specialOffer: "",
-        isAvailable: clean(values[idx.disp]).toLowerCase() !== 'no'
-      };
-    });
-
-    return inventory.length > 0 ? inventory : MOCK_INVENTORY;
+    return MOCK_INVENTORY;
   } catch (error) {
     console.error("Error loading inventory from API:", error);
     return MOCK_INVENTORY;

@@ -1,7 +1,6 @@
 
 declare const google: any;
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
 const CALENDAR_ID = '084b5445c71150aa903a30ea9cd63bef0f400fee3dc6483b725a35a74b0ba277@group.calendar.google.com';
 
@@ -10,24 +9,9 @@ let tokenExpiration: number = 0;
 
 export const getAccessToken = (): Promise<string | null> => {
   return new Promise((resolve) => {
-    if (accessToken && Date.now() < tokenExpiration) {
-      return resolve(accessToken);
-    }
-
-    if (!CLIENT_ID || typeof google === 'undefined') {
-      console.warn('Google Calendar OAuth not initialized or CLIENT_ID missing.');
-      return resolve(null);
-    }
-
-    try {
-      // We only ask for token if absolutely necessary, but here we'll just return null
-      // to avoid annoying the user with popups they didn't expect.
-      // If we really wanted to, we could show a "Sync to Calendar" button instead.
-      resolve(null);
-    } catch (error) {
-      console.error('Error checking for token:', error);
-      resolve(null);
-    }
+    // Sync deshabilitado para evitar peticiones de OAuth ID
+    console.warn('Google Calendar OAuth deshabilitado por simplicidad.');
+    resolve(null);
   });
 };
 

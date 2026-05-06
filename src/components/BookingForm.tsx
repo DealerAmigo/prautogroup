@@ -21,6 +21,8 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     notes: '',
     name: '',
     phone: '',
+    monthlyBudget: '',
+    town: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -32,7 +34,7 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
     // Simulate API call or call onSuccess directly
     // In real app, we'd save to Firebase here
     try {
-      const { saveLead } = await import('../lib/firebase');
+      const { saveLead } = await import('../lib/leads');
       await saveLead({
         type: 'appointment_booking_form',
         ...formData,
@@ -156,6 +158,20 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500/50 transition-all font-mono"
+                />
+             </div>
+             <div className="grid grid-cols-2 gap-2 mt-2">
+                <input 
+                  placeholder="Presupuesto Mensual ($)"
+                  value={formData.monthlyBudget}
+                  onChange={(e) => setFormData({...formData, monthlyBudget: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500/50 transition-all"
+                />
+                <input 
+                  placeholder="Pueblo"
+                  value={formData.town}
+                  onChange={(e) => setFormData({...formData, town: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500/50 transition-all"
                 />
              </div>
            </div>
