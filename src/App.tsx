@@ -1,0 +1,1751 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Send, Car, ChevronRight, ChevronLeft, MapPin, ShieldCheck, Fuel, Phone, MessageSquare, Menu, X, Sparkles, RotateCcw, ExternalLink } from 'lucide-react';
+import { ChatMessage, Vehicle } from './types';
+import { createSalesmanChat } from './lib/ai';
+import { getInventory, searchVehicles, getCachedInventory } from './lib/inventory';
+import { createCalendarEvent, AppointmentDetails } from './lib/calendar';
+import BookingForm from './components/BookingForm';
+import { saveLead, saveChatSession } from './lib/leads';
+import ReactMarkdown from 'react-markdown';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const TICKER_ITEMS = [
+  "Excelencia automotriz garantizada",
+  "Inspección Rigurosa de 115 Puntos",
+  "Financiamiento flexible disponible",
+  "Protección de crédito incluida",
+  "Tanque lleno en cada entrega",
+  "Entrega en toda la isla",
+  "Recibimos tu trade-in con o sin deuda",
+  "Certificación de 115 puntos"
+];
+
+export default function App() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [inventory, setInventory] = useState<Vehicle[]>(() => {
+    try {
+      return getCachedInventory();
+    } catch (e) {
+      return [];
+    }
+  });
+  const [isLoadingInventory, setIsLoadingInventory] = useState(() => {
+    try {
+      return getCachedInventory().length === 0;
+    } catch (e) {
+      return true;
+    }
+  });
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'chat' | 'inventory'>(() => {
+    // Dentro del widget embebido (iframe en gtautopr.com) arranca en chat.
+    // Si se visita la URL de Cloud Run directo, se mantiene el comportamiento original.
+    try {
+      return window.self !== window.top ? 'chat' : 'inventory';
+    } catch (e) {
+      // Acceso a window.top bloqueado por el navegador = definitivamente estamos en un iframe cross-origin
+      return 'chat';
+    }
+  });
+  
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+
+  // Filter States
+  const [selectedMake, setSelectedMake] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
+  const [selectedMaxPrice, setSelectedMaxPrice] = useState<number>(0);
+
+  // Determine actual maximum price in inventory to set initial slider boundary
+  const absoluteMaxPrice = useMemo(() => {
+    if (inventory.length === 0) return 100000;
+    return Math.max(...inventory.map(v => v.price));
+  }, [inventory]);
+
+  // Set the default selectedMaxPrice to absoluteMaxPrice once inventory is loaded
+  useEffect(() => {
+    if (inventory.length > 0 && selectedMaxPrice === 0) {
+      setSelectedMaxPrice(Math.max(...inventory.map(v => v.price)));
+    }
+  }, [inventory, selectedMaxPrice]);
+
+  // Extract unique options dynamically
+  const uniqueMakes = useMemo(() => {
+    const list = Array.from(new Set(inventory.map(v => v.make).filter(Boolean)));
+    return list.sort();
+  }, [inventory]);
+
+  const uniqueCategories = useMemo(() => {
+    const list = Array.from(new Set(inventory.map(v => v.category).filter(Boolean)));
+    return list.sort();
+  }, [inventory]);
+
+  const uniqueYears = useMemo(() => {
+    const list = Array.from(new Set(inventory.map(v => v.year).filter(Boolean)));
+    return list.sort((a, b) => b - a);
+  }, [inventory]);
+
+  const filteredInventory = useMemo(() => {
+    return inventory.filter(v => {
+      const matchMake = selectedMake === 'all' || v.make.toLowerCase() === selectedMake.toLowerCase();
+      const matchCategory = selectedCategory === 'all' || v.category?.toLowerCase() === selectedCategory.toLowerCase();
+      const matchYear = selectedYear === 'all' || v.year.toString() === selectedYear;
+      const matchPrice = v.price <= (selectedMaxPrice || absoluteMaxPrice);
+      return matchMake && matchCategory && matchYear && matchPrice;
+    });
+  }, [inventory, selectedMake, selectedCategory, selectedYear, selectedMaxPrice, absoluteMaxPrice]);
+
+  const activeVehicleImages = useMemo(() => {
+    if (selectedVehicle) {
+      if (selectedVehicle.images && selectedVehicle.images.length > 0) {
+        return selectedVehicle.images;
+      }
+      return [selectedVehicle.image];
+    }
+    return selectedImage ? [selectedImage] : [];
+  }, [selectedVehicle, selectedImage]);
+
+  useEffect(() => {
+    if (selectedVehicle && selectedImage) {
+      const idx = (selectedVehicle.images || []).indexOf(selectedImage);
+      setActiveImageIndex(idx >= 0 ? idx : 0);
+    } else {
+      setActiveImageIndex(0);
+    }
+  }, [selectedVehicle, selectedImage]);
+
+  const [vehiclePitch, setVehiclePitch] = useState<string>('');
+  const [isPitching, setIsPitching] = useState(false);
+  
+  const chatRef = useRef<any>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // Rastrea si ya se envió el evento "nuevo_lead" en esta conversación,
+  // para que el GAS no repita el email de "nuevo lead" en cada actualización.
+  const leadEventTypeRef = useRef<'nuevo_lead' | 'actualizacion'>('nuevo_lead');
+
+  const handleImageClick = async (imageUrl: string, vehicleData?: Vehicle) => {
+    let vehicle = vehicleData;
+    
+    const getTrulyCleanImageUrl = (url: string): string => {
+      if (!url) return "";
+      try {
+        if (url.includes('apicdn.inventario360.com/img')) {
+          const urlObj = new URL(url);
+          const srcParam = urlObj.searchParams.get("src");
+          if (srcParam) {
+            return decodeURIComponent(srcParam).split(/[?#]/)[0];
+          }
+        }
+      } catch (e) {
+        // Fallback to simple string splits
+      }
+      return url.split(/[?#]/)[0];
+    };
+
+    if (!vehicle) {
+      // 1. Exact match on primary image
+      vehicle = inventory.find(v => v.image === imageUrl);
+    }
+    
+    if (!vehicle) {
+      // 2. Exact match in the images array
+      vehicle = inventory.find(v => v.images && v.images.includes(imageUrl));
+    }
+    
+    if (!vehicle && imageUrl.includes('http')) {
+      // 3. Fuzzy match: Check if any vehicle id, image or images array matches
+      const cleanUrl = getTrulyCleanImageUrl(imageUrl);
+      vehicle = inventory.find(v => {
+        if (v.id && cleanUrl.includes(v.id)) return true;
+        
+        const cleanVImage = getTrulyCleanImageUrl(v.image);
+        if (cleanVImage && (cleanVImage.includes(cleanUrl) || cleanUrl.includes(cleanVImage))) return true;
+        
+        if (v.images) {
+          return v.images.some(img => {
+            const cleanImg = getTrulyCleanImageUrl(img);
+            return cleanImg && (cleanImg.includes(cleanUrl) || cleanUrl.includes(cleanImg));
+          });
+        }
+        return false;
+      });
+    }
+
+    setSelectedVehicle(vehicle || null);
+    setSelectedImage(imageUrl);
+    
+    if (vehicle) {
+      // Track lead
+      saveLead({
+        type: 'image_click',
+        vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        price: vehicle.price,
+        imageUrl: vehicle.image,
+        source: 'grid_click'
+      });
+    }
+  };
+
+  const loadInventory = async () => {
+    setIsLoadingInventory(true);
+    try {
+      const data = await getInventory();
+      setInventory(data);
+    } finally {
+      setIsLoadingInventory(false);
+    }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        // 1. Instantly get the cached inventory for immediate chatbot brain loading
+        const cachedData = getCachedInventory();
+        
+        // Load saved state from sessionStorage
+        let initialMessages = null;
+        let initialHistory = [];
+        const SESSION_KEY_MESSAGES = 'chat-messages-v3'; // Changed to force refresh
+        const SESSION_KEY_HISTORY = 'gemini-history-v3'; // Changed to force refresh
+        
+        try {
+          const savedMessages = sessionStorage.getItem(SESSION_KEY_MESSAGES);
+          if (savedMessages) {
+            const parsed = JSON.parse(savedMessages);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              initialMessages = parsed;
+            }
+          }
+
+          const savedHistory = sessionStorage.getItem(SESSION_KEY_HISTORY);
+          if (savedHistory) {
+            const parsed = JSON.parse(savedHistory);
+            if (Array.isArray(parsed)) {
+              initialHistory = parsed;
+            }
+          }
+        } catch (e) {
+          console.error("Corruption in session storage detected:", e);
+        }
+
+        if (initialMessages) {
+          setMessages(initialMessages);
+        } else {
+          setMessages([
+            {
+              id: '1',
+              role: 'assistant',
+              content: '¡Hola! Le habla Camilo, su asesor virtual de GT Auto Imports en Dorado. ¿Con quién tengo el gusto y qué tipo de vehículo está buscando hoy? 👋',
+              timestamp: Date.now()
+            }
+          ]);
+        }
+        
+        // Instantly initialize chat with cached/preloaded inventory and saved history
+        chatRef.current = createSalesmanChat(cachedData, initialHistory);
+
+        // 2. Fetch fresh live sheets inventory from API asynchronously in the background
+        const data = await getInventory();
+        setInventory(data);
+
+        // 3. Keep chatbot brain updated with the fresh live sheet inventory
+        if (chatRef.current) {
+          chatRef.current.setInventory(data);
+        }
+      } catch (err) {
+        console.error("Initialization failed:", err);
+      } finally {
+        setIsLoadingInventory(false);
+      }
+    };
+    
+    init();
+  }, []);
+
+  useEffect(() => {
+    if (inventory.length > 0 && chatRef.current) {
+      chatRef.current.setInventory(inventory);
+    }
+  }, [inventory]);
+
+  // Persistence effect
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        sessionStorage.setItem('chat-messages-v3', JSON.stringify(messages));
+      }
+      if (chatRef.current) {
+        const history = chatRef.current.getHistory();
+        if (history && history.length > 0) {
+          sessionStorage.setItem('gemini-history-v3', JSON.stringify(history));
+        }
+      }
+    } catch (e) {
+      console.warn("Could not save chat state to sessionStorage:", e);
+    }
+  }, [messages]);
+
+  const handleResetChat = () => {
+    sessionStorage.removeItem('chat-messages-v3');
+    sessionStorage.removeItem('gemini-history-v3');
+    const newGreeting: ChatMessage = {
+      id: 'reset-' + Date.now(),
+      role: 'assistant',
+      content: '¡Hola! Le habla Camilo, su asesor virtual de GT Auto Imports en Dorado. ¿Qué tipo de vehículo está buscando? ¿SUV, pickup, sedan, o algo económico? 👋',
+      timestamp: Date.now()
+    };
+    setMessages([newGreeting]);
+    if (chatRef.current) {
+      chatRef.current.setInventory(inventory);
+      // We manually clear the history in the chat instance
+      // @ts-ignore - reaching into private state for session reset
+      chatRef.current.history = [];
+    }
+  };
+
+  useEffect(() => {
+    if (!scrollAreaRef.current) return;
+    const scrollContainer = scrollAreaRef.current;
+    
+    // Un pequeño delay permite que React renderice los nuevos elementos (ej. markdown, listado de autos)
+    const timeoutId = setTimeout(() => {
+      if (isTyping) {
+        scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+        return;
+      }
+
+      if (messages.length > 0) {
+        const lastMsgId = messages[messages.length - 1].id;
+        const lastMsgEl = document.getElementById(`message-${lastMsgId}`);
+        
+        if (lastMsgEl) {
+          const containerHeight = scrollContainer.clientHeight;
+          const msgHeight = lastMsgEl.clientHeight;
+          
+          // Si el mensaje es muy alto (ej. texto largo + listado de vehículos),
+          // lo alineamos al principio (con un poco de espacio) para que no se oculte el texto por el scroll al fondo.
+          if (msgHeight > containerHeight * 0.5) {
+            const offsetTop = lastMsgEl.offsetTop;
+            scrollContainer.scrollTo({ top: Math.max(0, offsetTop - 24), behavior: 'smooth' });
+          } else {
+            scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+          }
+        } else {
+          scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+        }
+      }
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [messages, isTyping]);
+
+  async function handleSend(manualMessage?: string) {
+    const textToSubmit = manualMessage || inputText;
+    if (!textToSubmit.trim() || isTyping || !chatRef.current) return;
+
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: textToSubmit,
+      timestamp: Date.now(),
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    if (!manualMessage) setInputText('');
+    setIsTyping(true);
+    let vehiclesToShow: Vehicle[] = [];
+
+    try {
+      let chatResponse = await chatRef.current.sendMessage(textToSubmit);
+      let response = chatResponse.response;
+      let functionCalls = typeof response.functionCalls === 'function' ? response.functionCalls() : response.functionCalls;
+      
+      // Multi-turn tool handling
+      let maxTurns = 3;
+      while (functionCalls && Array.isArray(functionCalls) && functionCalls.length > 0 && maxTurns > 0) {
+        maxTurns--;
+        const toolResults: any[] = [];
+        let shouldStopAfterTools = false;
+
+        for (const call of functionCalls) {
+          if (call.name === 'search_inventory') {
+            const args = call.args as any;
+            const results = searchVehicles(inventory, {
+              query: args.query || '',
+              category: args.category || '',
+              maxPrice: args.maxPrice || 0
+            });
+            vehiclesToShow = [...vehiclesToShow, ...results];
+            toolResults.push({ name: call.name, result: { 
+              count: results.length,
+              results: results.slice(0, 5).map(v => `${v.year} ${v.make} ${v.model} ($${v.price})`)
+            }});
+          } else if (call.name === 'show_booking_form') {
+            setMessages(prev => [...prev, {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: '¡Excelente! Aquí tienes el formulario para coordinar tu visita. Solo toma 30 segundos.',
+              timestamp: Date.now(),
+              isBookingForm: true
+            }]);
+            toolResults.push({ name: call.name, result: { shown: true } });
+            shouldStopAfterTools = true;
+          } else if (call.name === 'request_car') {
+            const args = call.args as any;
+            saveLead({ ...args, type: 'car_request', inputText: textToSubmit });
+            userMsg.intent = 'Petición';
+            toolResults.push({ name: call.name, result: { success: true, message: "Petición registrada correctamente." } });
+          } else if (call.name === 'register_lead') {
+            const args = call.args as any;
+            saveLead({ ...args, type: 'proposal_request', inputText: textToSubmit, source: args.source || 'chat' });
+            userMsg.intent = 'Interesado';
+            toolResults.push({ name: call.name, result: { success: true, message: "Lead guardado exitosamente." } });
+          } else if (call.name === 'schedule_appointment') {
+            const args = call.args as AppointmentDetails;
+            try {
+              await createCalendarEvent(args);
+              userMsg.intent = 'Cita';
+              toolResults.push({ name: call.name, result: { success: true, message: "Cita agendada exitosamente." } });
+            } catch (err: any) {
+              toolResults.push({ name: call.name, result: { success: false, error: err.message } });
+            }
+          }
+        }
+
+        // Add results to history
+        toolResults.forEach(tr => chatRef.current.addFunctionResponse(tr.name, tr.result));
+
+        if (shouldStopAfterTools) break;
+
+        // Get AI reaction to tool execution
+        chatResponse = await chatRef.current.sendMessage("");
+        response = chatResponse.response;
+        functionCalls = typeof response.functionCalls === 'function' ? response.functionCalls() : response.functionCalls;
+      }
+
+      const responseTextRaw = typeof response.text === 'function' ? response.text() : (response.text || '');
+      let responseText = responseTextRaw || '';
+      let botIntent: string | undefined = undefined;
+      let appointmentConfirmed = false;
+      
+      // Extract CITA_CONFIRMADA:
+      let citaDataStr = "";
+      const citaMatch = responseText.match(/CITA_CONFIRMADA:\s*(.+)$/m) || responseText.match(/CITA_CONFIRMADA:\s*(.+)/);
+      if (citaMatch) {
+        citaDataStr = citaMatch[1].trim();
+        responseText = responseText.replace(/CITA_CONFIRMADA:.*$/m, '').replace(/CITA_CONFIRMADA:.*/s, '').trim();
+      }
+      
+      // Extract LEAD_DATA:
+      let leadDataObj: any = null;
+      const leadMatch = responseText.match(/LEAD_DATA:\s*(\{.*\})/s);
+      if (leadMatch) {
+         try {
+           leadDataObj = JSON.parse(leadMatch[1].trim());
+         } catch(e) {
+           console.error("Error parsing LEAD_DATA JSON in regex:", e);
+         }
+         responseText = responseText.replace(/LEAD_DATA:\s*\{.*\}/s, '').trim();
+      }
+
+      // Extract MOSTRAR_VEHICULO:
+      let vehicleToShowInfo = "";
+      const vehicleMatch = responseText.match(/MOSTRAR_VEHICULO:\s*(.+)$/m) || responseText.match(/MOSTRAR_VEHICULO:\s*(.+)/);
+      if (vehicleMatch) {
+         vehicleToShowInfo = vehicleMatch[1].trim();
+         responseText = responseText.replace(/MOSTRAR_VEHICULO:.*$/m, '').replace(/MOSTRAR_VEHICULO:.*/s, '').trim();
+      }
+
+      // 1. Process appointment if confirmed
+      if (citaDataStr) {
+        botIntent = 'Cita Confirmada';
+        userMsg.intent = 'Cita Confirmada';
+        appointmentConfirmed = true;
+        try {
+          const fields = citaDataStr.split('|');
+          let appointmentDate = "";
+          let appointmentNotes = "";
+          
+          if (fields.length >= 6) {
+            appointmentDate = fields[4] || '';
+            appointmentNotes = fields[5] || '';
+          } else {
+            appointmentNotes = fields[4] || '';
+            appointmentDate = fields[4] || ''; // Fallback
+          }
+          
+          saveLead({
+            nombre: fields[0] || '',
+            telefono: fields[1] || '',
+            presupuesto_mensual: fields[2] || '',
+            vehiculo_interes: fields[3] || '',
+            fecha_cita: appointmentDate,
+            notas: appointmentNotes,
+            type: 'ai_appointment_confirmation',
+            eventType: 'cita_confirmada',
+            fullText: responseTextRaw,
+            conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
+          });
+          leadEventTypeRef.current = 'actualizacion';
+        } catch (e) {
+          console.error("Error parsing CITA_CONFIRMADA data:", e);
+        }
+      }
+
+      // 2. Process lead data capture (always post collected data)
+      if (leadDataObj) {
+        if (!botIntent) {
+          botIntent = 'Lead Capturado';
+          userMsg.intent = 'Lead Capturado';
+        }
+        saveLead({
+          ...leadDataObj,
+          type: 'ai_lead_capture',
+          eventType: leadEventTypeRef.current,
+          fullText: responseTextRaw,
+          conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
+        });
+        leadEventTypeRef.current = 'actualizacion';
+      }
+
+      // 3. Process show vehicle request
+      if (vehicleToShowInfo) {
+        const cleanInfo = vehicleToShowInfo.replace('[', '').replace(']', '').trim();
+        const [year, make, ...modelParts] = cleanInfo.split(' ');
+        const model = modelParts.join(' ');
+        
+        const found = inventory.find(v => 
+          v.year.toString() === year && 
+          v.make.toLowerCase() === make?.toLowerCase() && 
+          v.model.toLowerCase().includes(model?.toLowerCase())
+        );
+        
+        if (found) {
+          vehiclesToShow = [found];
+        }
+      }
+      
+      const botMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: responseText || (vehiclesToShow.length > 0 ? '¡Excelente! Aquí tienes la unidad disponible:' : 'Entendido. ¿En qué más puedo ayudarte?'),
+        timestamp: Date.now(),
+        intent: botIntent,
+        appointmentConfirmed: appointmentConfirmed,
+        vehicles: vehiclesToShow.length > 0 ? vehiclesToShow : undefined
+      };
+
+      setMessages(prev => [...prev, botMsg]);
+    } catch (error: any) {
+      console.error("Gemini Error:", error);
+      const errorMessage = error?.message || "Lo siento, tuve un pequeño inconveniente.";
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Error: ${errorMessage}. ¿Podrías repetirme eso?`,
+        timestamp: Date.now(),
+      }]);
+    } finally {
+      setIsTyping(false);
+    }
+  }
+
+  // Effect to sync chat to Firebase if logged in (or just unique device ID)
+  useEffect(() => {
+    if (messages.length > 1) {
+      const sessionId = sessionStorage.getItem('chat-session-id') || Date.now().toString();
+      if (!sessionStorage.getItem('chat-session-id')) {
+        sessionStorage.setItem('chat-session-id', sessionId);
+      }
+      
+      import('./lib/leads').then(({ saveChatSession }) => {
+        if (saveChatSession) {
+          saveChatSession(sessionId, messages);
+        }
+      });
+    }
+  }, [messages]);
+
+  const handleSaveNote = async (note: string) => {
+    const sessionId = sessionStorage.getItem('chat-session-id');
+    if (sessionId) {
+      await saveLead({
+        type: 'note',
+        content: note,
+        sessionId,
+        timestamp: Date.now()
+      });
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-screen bg-black overflow-hidden selection:bg-sky-500 selection:text-white">
+      {/* Lightbox Modal */}
+      <AnimatePresence>
+        {selectedImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/98 flex items-center justify-center p-4 md:p-12 backdrop-blur-2xl overflow-y-auto"
+          >
+            <div className="absolute inset-0 cursor-zoom-out" onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }} />
+            
+            {/* Botón de cerrar fijo arriba a la derecha para fácil acceso sin importar el scroll */}
+            <button 
+              onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }}
+              className="fixed top-6 right-6 md:top-10 md:right-10 z-[120] text-zinc-300 hover:text-white bg-zinc-900/95 hover:bg-sky-500 border border-white/10 hover:border-sky-400 p-3.5 md:p-4 rounded-full transition-all duration-300 shadow-2xl flex items-center justify-center cursor-pointer active:scale-95"
+              title="Cerrar detalles del auto"
+            >
+              <X size={24} />
+            </button>
+            
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-0 bg-[#080808] rounded-[3rem] overflow-hidden border border-white/10 shadow-[0_80px_160px_rgba(0,0,0,0.9)]"
+            >
+              <div className="relative aspect-square lg:aspect-auto h-full min-h-[400px] group/img flex items-center justify-center bg-black/40">
+                <AnimatePresence mode="wait">
+                  <motion.img 
+                    key={activeImageIndex}
+                    src={activeVehicleImages[activeImageIndex] || selectedImage || ""} 
+                    alt="Enlarged view" 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.05 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-full h-full object-cover transition-transform duration-1000 group-hover/img:scale-105" 
+                  />
+                </AnimatePresence>
+                
+
+
+                {/* Left Arrow Button */}
+                {activeVehicleImages.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveImageIndex((prev) => (prev === 0 ? activeVehicleImages.length - 1 : prev - 1));
+                    }}
+                    className="absolute left-6 top-1/2 -translate-y-1/2 z-20 text-white bg-black/60 hover:bg-sky-500 transition-all p-4 rounded-full border border-white/10 hover:scale-110 active:scale-95 flex items-center justify-center shadow-2xl"
+                    title="Anterior"
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                )}
+
+                {/* Right Arrow Button */}
+                {activeVehicleImages.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveImageIndex((prev) => (prev === activeVehicleImages.length - 1 ? 0 : prev + 1));
+                    }}
+                    className="absolute right-6 top-1/2 -translate-y-1/2 z-20 text-white bg-black/60 hover:bg-sky-500 transition-all p-4 rounded-full border border-white/10 hover:scale-110 active:scale-95 flex items-center justify-center shadow-2xl"
+                    title="Siguiente"
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                )}
+
+                {/* Page Indicator */}
+                {activeVehicleImages.length > 1 && (
+                  <div className="absolute top-8 right-8 z-20 bg-black/70 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10 text-xs font-black text-white uppercase tracking-widest font-mono">
+                    {activeImageIndex + 1} / {activeVehicleImages.length}
+                  </div>
+                )}
+
+                {/* Thumbnail Strip */}
+                {activeVehicleImages.length > 1 && (
+                  <div className="absolute bottom-28 left-6 right-6 z-20 flex gap-2 justify-center overflow-x-auto no-scrollbar py-1.5 max-w-full backdrop-blur-sm bg-black/20 rounded-2xl border border-white/5 p-2">
+                    {activeVehicleImages.map((imgUrl, idx) => (
+                      <button
+                        key={idx}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveImageIndex(idx);
+                        }}
+                        className={cn(
+                          "w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 transition-all duration-300 hover:scale-105 active:scale-95",
+                          idx === activeImageIndex ? "border-sky-500 scale-110 shadow-lg shadow-sky-500/30" : "border-white/20 hover:border-white/55 opacity-60 hover:opacity-100"
+                        )}
+                      >
+                        <img src={imgUrl} className="w-full h-full object-cover" alt={`Photo ${idx + 1}`} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="absolute bottom-6 left-6 right-6 z-20">
+                   <div className="flex items-center gap-4 bg-black/50 backdrop-blur-xl p-4 rounded-2xl border border-white/10">
+                      <div className="w-12 h-12 rounded-xl bg-sky-500 flex items-center justify-center shrink-0 shadow-lg shadow-sky-500/30">
+                        <Car size={26} className="text-white" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-sky-400 mb-0.5">Unidad Certificada</p>
+                        <h3 className="text-lg font-black text-white italic uppercase tracking-tighter">GT Auto Imports Premium</h3>
+                      </div>
+                   </div>
+                </div>
+
+                <button 
+                  onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }}
+                  className="absolute top-8 left-8 z-20 text-white bg-black/60 backdrop-blur-md p-4 rounded-full hover:bg-sky-500 transition-all border border-white/10"
+                  title="Cerrar galería"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-8 md:p-16 flex flex-col justify-between bg-[#0a0a0a] relative">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 blur-[120px] rounded-full pointer-events-none" />
+                
+                <div>
+                  <div className="flex items-center justify-between mb-10">
+                    <div className="flex items-center gap-3">
+                      <div className="h-[2px] w-12 bg-sky-500" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.5em] text-sky-400">Beneficios & Ventajas</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => { setSelectedImage(null); setSelectedVehicle(null); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-zinc-300 hover:bg-sky-500 hover:text-white hover:border-sky-400 transition-all active:scale-95"
+                        title="Volver al Inventario"
+                      >
+                        <X size={12} />
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedVehicle ? (
+                    <div className="space-y-12">
+                      <div>
+                        <motion.h2 
+                          initial={{ x: -20, opacity: 0 }}
+                          animate={{ x: 0, opacity: 1 }}
+                          className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter text-white leading-[0.9] mb-4"
+                        >
+                          {selectedVehicle.year} <br />
+                          <span className="text-sky-400 underline decoration-white/10 underline-offset-8">{selectedVehicle.make}</span> <br />
+                          {selectedVehicle.model}
+                        </motion.h2>
+                        <div className="flex items-center gap-6">
+                          <div className="flex flex-col">
+                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Precio Especial PR</span>
+                             <span className="text-4xl font-mono font-black text-white tracking-tight">${selectedVehicle.price.toLocaleString()}</span>
+                          </div>
+                          <div className="h-10 w-[1px] bg-white/10" />
+                          <div className="bg-emerald-500/10 px-4 py-2 rounded-xl flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                             <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Inventario Disponible</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                        <BenefitCard icon={<ShieldCheck className="text-sky-400" />} title="Transmisión" desc={selectedVehicle.transmission || "Automática certificada."} />
+                        <BenefitCard icon={<Sparkles className="text-sky-400" />} title="Condición" desc={`${selectedVehicle.mileage} - Certificación 115 puntos.`} />
+                        <BenefitCard icon={<Fuel className="text-sky-400" />} title="Eficiencia MPG" desc={selectedVehicle.mpg || "Consumo líder en su categoría."} />
+                        <BenefitCard icon={<MapPin className="text-sky-400" />} title="Color" desc={`Ext: ${selectedVehicle.exteriorColor || 'N/A'} | Int: ${selectedVehicle.interiorColor || 'N/A'}`} />
+                      </div>
+
+                      <div className="bg-white/[0.03] p-8 rounded-[2rem] border border-white/5">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-6 flex items-center gap-3">
+                           <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                           Especificaciones Técnicas
+                        </h4>
+                        <ul className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
+                          <SpecItem label="Marca" value={selectedVehicle.make} />
+                          <SpecItem label="Modelo" value={selectedVehicle.model} />
+                          {selectedVehicle.trim && <SpecItem label="Trim/Submodelo" value={selectedVehicle.trim} />}
+                          <SpecItem label="Año" value={selectedVehicle.year.toString()} />
+                          <SpecItem label="Precio" value={`$${selectedVehicle.price.toLocaleString()}`} />
+                          <SpecItem label="Millaje" value={selectedVehicle.mileage || "N/A"} />
+                          <SpecItem label="Categoría" value={selectedVehicle.category || "N/A"} />
+                          <SpecItem label="Motor" value={selectedVehicle.engine || "N/A"} />
+                          <SpecItem label="Tracción" value={selectedVehicle.driveTrain || "N/A"} />
+                          <SpecItem label="Transmisión" value={selectedVehicle.transmission || "N/A"} />
+                        </ul>
+                      </div>
+
+                      {selectedVehicle.description && (
+                        <div className="bg-sky-500/5 p-8 rounded-[2rem] border border-sky-500/10">
+                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-400 mb-4 flex items-center gap-3">
+                             Notas del Especialista
+                          </h4>
+                          <p className="text-slate-400 text-sm leading-relaxed italic">
+                            "{selectedVehicle.description}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="py-20 text-center">
+                      <Sparkles className="mx-auto text-sky-400 mb-6 animate-pulse" size={60} />
+                      <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-xs">Analizando ventajas competitivas en tiempo real...</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-16 flex flex-col sm:flex-row gap-5 relative z-10">
+                  <button 
+                    onClick={() => {
+                      if (selectedVehicle) {
+                        handleSend(`Me interesa el ${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}. ¿Cuáles son los próximos pasos para el financiamiento?`);
+                        setSelectedImage(null);
+                        setSelectedVehicle(null);
+                        setActiveTab('chat');
+                      }
+                    }}
+                    className="flex-1 bg-white text-black font-black py-7 rounded-3xl text-xs uppercase tracking-[0.3em] transition-all hover:bg-sky-500 hover:text-white shadow-2xl shadow-white/5 active:scale-95 group/btn"
+                  >
+                    Hablar con un Experto 
+                    <ChevronRight size={16} className="inline ml-2 group-hover/btn:translate-x-2 transition-transform" />
+                  </button>
+                  <button 
+                    onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+                    className="px-10 py-7 bg-amber-500 text-zinc-950 font-black rounded-3xl text-[10px] uppercase tracking-[0.25em] hover:bg-amber-400 transition-all shadow-2xl shadow-amber-500/20 active:scale-95 flex items-center justify-center gap-3 whitespace-nowrap"
+                  >
+                    Pre-Cualifica <ShieldCheck size={18} className="text-zinc-950" />
+                  </button>
+                  <button 
+                    onClick={() => window.open(`https://wa.me/17872788000?text=Hola! Me interesa el ${selectedVehicle?.year} ${selectedVehicle?.make} ${selectedVehicle?.model}`, '_blank')}
+                    className="px-10 py-7 bg-emerald-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-[0.25em] hover:bg-emerald-500 transition-all shadow-2xl shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    WhatsApp <MessageSquare size={18} />
+                  </button>
+                  <button 
+                    onClick={() => window.open('tel:17872788000', '_self')}
+                    className="px-10 py-7 bg-sky-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-[0.25em] hover:bg-sky-500 transition-all shadow-2xl shadow-sky-600/20 active:scale-95 flex items-center justify-center gap-3"
+                  >
+                    Llamar <Phone size={18} />
+                  </button>
+                </div>
+
+                {/* Botón flotante fixed arriba a la derecha maneja el cierre de manera consistente */}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating WhatsApp - REMOVED PER REQUEST */}
+
+      {/* Main Header */}
+      <header className="py-4 flex-shrink-0 border-b border-zinc-900 bg-black/95 backdrop-blur-3xl px-4 z-50 sticky top-0">
+        <div className="flex items-center justify-between w-full relative max-w-[1800px] mx-auto">
+          {/* Logo & Status */}
+          <div className="flex items-center gap-3">
+            {/* Real GT Auto Imports Logo Image */}
+            <div className="shrink-0 flex items-center justify-center">
+              <img 
+                src="https://gtautopr.com/wp-content/uploads/2024/10/logo_2576e84d24261a5b737ba93c581c5493-e1729735728852.png" 
+                alt="GT Auto Imports" 
+                className="h-[120px] md:h-[168px] w-auto object-contain select-none"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            
+            <div className="hidden sm:flex flex-col border-l border-white/10 pl-3 py-0.5 justify-center">
+              <div className="flex items-center gap-1.5 leading-none">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_6px_#10b981]" />
+                <span className="text-[8px] md:text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">Abierto</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions, Tab Switcher & Location */}
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            {/* Top row of action buttons */}
+            <div className="flex items-center gap-2">
+
+              {/* Clasificados.com */}
+              <button 
+                onClick={() => window.open('https://www.clasificadosonline.com/PartnersListingTranspID.asp?ID=55011', '_blank')}
+                className="hidden md:flex px-4 h-9 bg-blue-600 rounded-xl items-center justify-center text-white font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-90 transition-transform whitespace-nowrap gap-2 shrink-0"
+                title="Clasificados.com"
+              >
+                Clasificados.com <ExternalLink size={12} />
+              </button>
+              <button 
+                onClick={() => window.open('https://www.clasificadosonline.com/PartnersListingTranspID.asp?ID=55011', '_blank')}
+                className="flex md:hidden w-9 h-9 bg-blue-600 rounded-xl items-center justify-center text-white shadow-lg active:scale-90 transition-transform shrink-0"
+                title="Clasificados.com"
+              >
+                <ExternalLink size={18} />
+              </button>
+
+              {/* Prequalificación */}
+              <button 
+                onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+                className="hidden md:flex px-4 h-9 bg-white text-zinc-950 font-black text-[9px] uppercase tracking-wider shadow-lg active:scale-90 transition-all hover:bg-zinc-100 border border-zinc-300 rounded-xl items-center justify-center whitespace-nowrap gap-2 shrink-0"
+                title="PRE-CUALIFICA SIN INDAGACION DE CREDITO GARANTIZADO"
+              >
+                PRE-CUALIFICA <ShieldCheck size={14} className="text-emerald-600" />
+              </button>
+              <button 
+                onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+                className="flex md:hidden w-9 h-9 bg-white text-zinc-950 rounded-xl items-center justify-center shadow-lg active:scale-90 transition-transform border border-zinc-300 shrink-0"
+                title="PRE-CUALIFICA SIN INDAGACION DE CREDITO GARANTIZADO"
+              >
+                <ShieldCheck size={18} className="text-emerald-600" />
+              </button>
+
+              {/* WhatsApp */}
+              <button 
+                onClick={() => window.open('https://wa.me/17872788000', '_blank')}
+                className="w-9 h-9 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform shrink-0 hover:bg-emerald-500"
+                title="WhatsApp"
+              >
+                <MessageSquare size={18} />
+              </button>
+
+              {/* Llamar */}
+              <button 
+                onClick={() => window.open('tel:17872788000', '_self')}
+                className="w-9 h-9 bg-sky-600 rounded-xl flex items-center justify-center text-white shadow-lg active:scale-90 transition-transform shrink-0 hover:bg-sky-500"
+                title="Llamar"
+              >
+                <Phone size={18} />
+              </button>
+            </div>
+
+            {/* Bottom Row: Elegant Google Maps Driving Button/Link */}
+            <a 
+              href="https://www.google.com/maps/place/GT+Auto+Imports/@18.4064073,-66.2875219,837m/data=!3m2!1e3!4b1!4m6!3m5!1s0x8c031561fde1e43b:0xb8e5f3c789fff17!8m2!3d18.4064022!4d-66.284947!16s%2Fg%2F11wbywkgmv?hl=es-419&entry=ttu&g_ep=EgoyMDI0MTAyMS4xIKXMDSoASAFQAw%3D%3D"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-amber-400 hover:text-amber-300 transition-all py-1 px-3 bg-amber-500/10 border border-amber-500/20 hover:border-amber-500/40 rounded-lg shadow-md active:scale-95"
+              title="📍 Cómo llegar - Ver direcciones en Google Maps"
+            >
+              <span>📍 PR-2 KM 26.1, Dorado, PR</span>
+              <ChevronRight size={10} className="text-amber-500 animate-pulse" />
+            </a>
+          </div>
+        </div>
+      </header>
+
+      {/* Global Ticker Bar - Slimmed Down */}
+      <div className="bg-sky-500/10 border-b border-zinc-900 py-1.5 overflow-hidden shrink-0 z-40">
+        <div className="flex whitespace-nowrap animate-[ticker_40s_linear_infinite]">
+          {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
+            <span key={i} className="text-[10px] font-round font-black uppercase tracking-[0.2em] text-sky-400 px-10 flex items-center gap-3">
+              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full animate-pulse" />
+              {item}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content Area: Split View */}
+      <main className="flex-1 flex overflow-hidden relative pb-0 md:pb-0">
+        <AnimatePresence mode="wait">
+          {/* Left Column: AI Concierge */}
+          <aside 
+            key="chat-sidebar"
+            className={cn(
+              "w-full md:w-[450px] lg:w-[540px] border-r border-zinc-900 bg-black flex flex-col relative transition-all duration-500 ease-in-out",
+              activeTab === 'inventory' ? "hidden md:flex" : "flex"
+            )}
+          >
+            <header className="px-6 py-4 bg-zinc-950/40 border-b border-zinc-900 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Canal Seguro Activo</span>
+              </div>
+              <button 
+                onClick={handleResetChat}
+                className="group flex items-center gap-2 px-2 py-1 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-all"
+                title="Reiniciar chat"
+              >
+                <RotateCcw size={10} className="text-slate-500 group-hover:text-sky-400 transition-colors" />
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest group-hover:text-sky-400">Reiniciar</span>
+              </button>
+            </header>
+
+          <div 
+            ref={scrollAreaRef}
+            className="flex-1 overflow-y-auto px-4 md:px-6 py-6 md:py-10 space-y-10 scroll-smooth custom-scrollbar relative"
+          >
+            <AnimatePresence initial={false}>
+              {messages.map((msg) => (
+                <MessageBubble 
+                  key={msg.id} 
+                  message={msg} 
+                  onVehicleClick={(v) => {
+                    const messageText = `Me interesa el ${v.year} ${v.make} ${v.model}. Cuéntame más detalles sobre este auto.`;
+                    handleSend(messageText);
+                    if (window.innerWidth < 768) setActiveTab('chat');
+                  }} 
+                  onImageClick={handleImageClick}
+                />
+              ))}
+            </AnimatePresence>
+            {isTyping && <TypingIndicator />}
+            <div className="pb-24" />
+          </div>
+
+          {/* Input Bar */}
+          <div className="p-5 bg-black/95 backdrop-blur-2xl border-t border-zinc-900 shrink-0">
+            <div className="relative group flex gap-3">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+                  placeholder="Habla con tu asesor experto..."
+                  className="w-full bg-zinc-950/40 border border-zinc-850 rounded-2xl py-4.5 pl-5 pr-14 text-base text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/40 focus:bg-zinc-900/40 transition-all shadow-2xl"
+                />
+                <button 
+                  onClick={() => handleSend()}
+                  disabled={!inputText.trim() || isTyping}
+                  className="absolute right-2 top-2 bottom-2 aspect-square bg-sky-500 rounded-xl hover:bg-sky-400 disabled:bg-white/5 disabled:text-slate-700 text-white transition-all shadow-[0_8px_20px_rgba(14,165,233,0.3)] active:scale-90 flex items-center justify-center p-0"
+                >
+                  <Send size={18} />
+                </button>
+              </div>
+              <button
+                onClick={handleResetChat}
+                title="Reiniciar chat"
+                className="px-4 bg-white/5 border border-white/10 rounded-2xl text-slate-500 hover:text-white hover:bg-sky-500/10 hover:border-sky-500/30 transition-all flex-shrink-0 flex items-center justify-center"
+              >
+                <RotateCcw size={20} />
+              </button>
+            </div>
+            {/* Mobile Tab Switcher in Chat Footer */}
+            <div className="flex md:hidden items-center justify-center mt-4 w-full px-4">
+              <div className="flex bg-zinc-950 p-1.5 rounded-2xl border border-white/5 w-full max-w-[320px] shadow-2xl">
+                <button 
+                  onClick={() => setActiveTab('chat')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center",
+                    activeTab === 'chat' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                  )}
+                >
+                  Chat
+                </button>
+                <button 
+                  onClick={() => setActiveTab('inventory')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center relative",
+                    activeTab === 'inventory' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                  )}
+                >
+                  Inventario
+                  {activeTab === 'chat' && (
+                    <span className="absolute top-2.5 right-6 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Desktop Only Footer Text */}
+            <div className="hidden md:flex items-center justify-center gap-6 mt-4">
+              <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
+                DealerAmigo AI v3.1
+              </p>
+              <div className="h-3 w-[1px] bg-white/5" />
+              <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
+                Seguro & Encriptado
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        {/* Right Column: Live Inventory Display */}
+        <section 
+          id="inventory-section"
+          className={cn(
+          "flex-1 bg-black relative flex-col overflow-hidden transition-all duration-500 ease-in-out",
+          activeTab === 'chat' ? "hidden md:flex" : "flex"
+        )}>
+
+          <div className="flex-1 overflow-y-auto p-6 md:p-14 lg:p-20 custom-scrollbar">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
+              <div className="max-w-2xl">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="h-[2px] w-12 bg-sky-500" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.5em] text-sky-400">Premium Selection</span>
+                </div>
+                <h3 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase text-white leading-none mb-6">
+                  Unidades <br/> <span className="text-sky-400">Certificadas</span>
+                </h3>
+                <p className="text-lg text-zinc-100 font-medium leading-relaxed">
+                  Calidad excepcional garantizada. Cada vehículo en nuestro inventario pasa por una inspección rigurosa de 115 puntos para asegurar tu tranquilidad total.
+                </p>
+              </div>
+              <div className="flex flex-col gap-4 w-full md:w-auto">
+                 <div className="flex gap-3">
+                  <button 
+                    onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+                    className="flex-1 md:flex-none px-4 py-5 bg-white text-zinc-950 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-zinc-100 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
+                  >
+                    PRE-CUALIFICA <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                  </button>
+                  <button 
+                    onClick={() => handleSend("¿Me pueden tasar mi trade-in?")}
+                    className="flex-1 md:flex-none px-8 py-5 bg-sky-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-sky-400 transition-all shadow-[0_15px_30px_rgba(14,165,233,0.3)] active:scale-95"
+                  >
+                    Tasar Trade-In
+                  </button>
+                </div>
+                <div className="flex items-center justify-center md:justify-end gap-2 text-emerald-400">
+                  <ShieldCheck size={14} />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Protección de crédito disponible</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 md:p-8 mb-12 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 blur-2xl rounded-full pointer-events-none" />
+              
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-sky-400 rounded-full animate-pulse" />
+                    Filtrar Inventario
+                  </h4>
+                  {(selectedMake !== 'all' || selectedCategory !== 'all' || selectedYear !== 'all' || (selectedMaxPrice !== 0 && selectedMaxPrice < absoluteMaxPrice)) && (
+                    <button 
+                      onClick={() => {
+                        setSelectedMake('all');
+                        setSelectedCategory('all');
+                        setSelectedYear('all');
+                        setSelectedMaxPrice(absoluteMaxPrice);
+                      }}
+                      className="text-[10px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1.5 self-start sm:self-auto"
+                    >
+                      <RotateCcw size={12} />
+                      Limpiar Filtros
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {/* Marca */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Marca</label>
+                    <select
+                      value={selectedMake}
+                      onChange={(e) => setSelectedMake(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                    >
+                      <option value="all" className="bg-[#0c0c0c] text-slate-200">Todas las marcas</option>
+                      {uniqueMakes.map(make => (
+                        <option key={make} value={make} className="bg-[#0c0c0c] text-slate-200">{make}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Carrocería / Categoría */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Tipo de Carrocería</label>
+                    <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                    >
+                      <option value="all" className="bg-[#0c0c0c] text-slate-200">Todos los tipos</option>
+                      {uniqueCategories.map(cat => (
+                        <option key={cat} value={cat} className="bg-[#0c0c0c] text-slate-200">{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Año */}
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Año</label>
+                    <select
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                    >
+                      <option value="all" className="bg-[#0c0c0c] text-slate-200">Todos los años</option>
+                      {uniqueYears.map(year => (
+                        <option key={year} value={year.toString()} className="bg-[#0c0c0c] text-slate-200">{year}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Rango de Precio */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Precio Máximo</label>
+                      <span className="text-xs font-mono font-bold text-sky-400">
+                        ${(selectedMaxPrice || absoluteMaxPrice).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 pt-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max={absoluteMaxPrice || 100000}
+                        step="1000"
+                        value={selectedMaxPrice || absoluteMaxPrice}
+                        onChange={(e) => setSelectedMaxPrice(Number(e.target.value))}
+                        className="w-full accent-sky-500 cursor-pointer h-1.5 bg-white/10 rounded-lg appearance-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filter counts info */}
+                <div className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5 mt-2">
+                  <span>Mostrando {filteredInventory.length} de {inventory.length} unidades certificadas</span>
+                </div>
+              </div>
+            </div>
+
+            {filteredInventory.length === 0 ? (
+              <div className="py-24 text-center border border-dashed border-white/10 rounded-[2rem] bg-white/[0.01]">
+                <Car size={48} className="mx-auto text-slate-600 mb-6 animate-pulse" />
+                <h4 className="text-xl font-black uppercase tracking-wider text-white mb-2">Sin Resultados</h4>
+                <p className="text-sm text-zinc-300 max-w-md mx-auto mb-6">
+                  No encontramos vehículos que coincidan con sus filtros actuales. Intente restablecer los criterios para ver más opciones.
+                </p>
+                <button
+                  onClick={() => {
+                    setSelectedMake('all');
+                    setSelectedCategory('all');
+                    setSelectedYear('all');
+                    setSelectedMaxPrice(absoluteMaxPrice);
+                  }}
+                  className="px-6 py-3 bg-sky-500 text-white font-black rounded-xl text-xs uppercase tracking-[0.2em] hover:bg-sky-400 transition-all shadow-[0_10px_20px_rgba(14,165,233,0.3)]"
+                >
+                  Restablecer Filtros
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 3xl:grid-cols-3 gap-10 lg:gap-14">
+                {filteredInventory.map(v => (
+                  <VehicleCard 
+                    key={v.id} 
+                    vehicle={v} 
+                    onImageClick={handleImageClick} 
+                    onChatClick={(vehicle) => {
+                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model}. ¿Está disponible para verlo hoy?`);
+                      setActiveTab('chat');
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Special Request Callout */}
+            <div className="mt-24 group relative">
+              <div className="absolute inset-0 bg-sky-500/5 blur-3xl rounded-[3rem] -z-10" />
+              <div className="bg-zinc-950 border border-white/5 p-10 md:p-16 rounded-[3rem] shadow-2xl overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                  <Car size={300} strokeWidth={1} className="text-white" />
+                </div>
+                
+                <div className="relative z-10">
+                  <h4 className="text-3xl font-black italic uppercase tracking-tighter text-white mb-6 flex items-center gap-4">
+                    <Sparkles className="text-sky-400" />
+                    Búsqueda Personalizada
+                  </h4>
+                  <p className="text-xl text-zinc-100 leading-relaxed max-w-3xl mb-10 font-medium">
+                    ¿Tienes un modelo específico en mente que no ves hoy? <br/>
+                    Nuestro equipo de <strong>Sourcing Elite</strong> localiza cualquier unidad en Puerto Rico o Estados Unidos y la trae por ti con certificación completa.
+                  </p>
+                  <button 
+                    onClick={() => handleSend("Necesito que me busquen un auto específico que no está en el listado.")}
+                    className="group-hover:translate-x-2 transition-all duration-500 bg-sky-500/10 border border-sky-500/30 text-sky-400 px-8 py-4 rounded-xl text-xs font-black uppercase tracking-[0.3em] inline-flex items-center gap-4 hover:bg-sky-500 hover:text-white"
+                  >
+                    Activar Búsqueda Especial <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <footer className="h-20 md:h-16 bg-black border-t border-zinc-900 flex items-center px-6 md:px-10 justify-between shrink-0">
+            <div className="hidden lg:flex gap-10">
+              <span className="text-[9px] text-zinc-300 uppercase font-black tracking-[0.3em] flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse" /> Live Updates
+              </span>
+              <span className="text-[9px] text-zinc-300 uppercase font-black tracking-[0.3em] flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse" /> Bancos Locales & Federales
+              </span>
+              <span className="text-[9px] text-zinc-300 uppercase font-black tracking-[0.3em] flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse" /> Protección Credito Incluida
+              </span>
+            </div>
+
+            {/* Mobile Tab Switcher in Inventory Footer */}
+            <div className="flex md:hidden items-center justify-center w-full">
+              <div className="flex bg-zinc-950 p-1.5 rounded-2xl border border-white/5 w-full max-w-[320px] shadow-2xl">
+                <button 
+                  onClick={() => setActiveTab('chat')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center",
+                    activeTab === 'chat' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                  )}
+                >
+                  Chat
+                </button>
+                <button 
+                  onClick={() => setActiveTab('inventory')}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center relative",
+                    activeTab === 'inventory' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                  )}
+                >
+                  Inventario
+                  {activeTab === 'chat' && (
+                    <span className="absolute top-2.5 right-6 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="hidden md:flex items-center gap-4 ml-auto">
+              <p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.3em]">GT Auto Imports &copy; 2026 • DealerAmigo PRO</p>
+            </div>
+          </footer>
+        </section>
+      </AnimatePresence>
+      </main>
+
+      {/* NO SCRIPTS OR FOOTERS BLOCKING CHAT */}
+
+      <style>{`
+        @keyframes ticker {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(239, 68, 68, 0.5);
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function MessageBubble({ message, onVehicleClick, onImageClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string, v?: Vehicle) => void }) {
+  const isBot = message.role === 'assistant';
+  const hasVehicles = message.vehicles && message.vehicles.length > 0;
+  
+  let cleanContent = message.content;
+  let showPreaprobacionCard = false;
+
+  if (isBot && (
+    message.content.includes("gtautopr.com/pre-aprobacion") || 
+    message.content.includes("pre-aprobacion") || 
+    message.content.includes("¿Quieres acelerar el proceso?")
+  )) {
+    showPreaprobacionCard = true;
+    // Strip the HTML code if present to avoid rendering raw HTML as code text
+    cleanContent = message.content.replace(/<div[\s\S]*?<\/div>/gi, "").trim();
+  }
+
+  return (
+    <motion.div
+      id={`message-${message.id}`}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn(
+        "flex flex-col gap-2 w-full",
+        isBot ? "items-start" : "items-end"
+      )}
+    >
+      <div className={cn(
+        "max-w-[85%] px-6 py-5 rounded-3xl relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-3xl border transition-all duration-300",
+        isBot 
+          ? "bg-white/[0.03] border-white/[0.08] rounded-tl-none text-slate-100" 
+          : "bg-sky-500 border-sky-400 rounded-tr-none text-white shadow-[0_10px_20px_rgba(14,165,233,0.2)]"
+      )}>
+        {cleanContent && (
+          <div className={cn(
+            "markdown-body leading-relaxed font-round text-lg md:text-xl font-medium"
+          )}>
+            <ReactMarkdown
+              components={{
+                img: ({ src, alt }) => (
+                  <span 
+                    className="block my-6 rounded-2xl overflow-hidden border border-white/10 shadow-2xl cursor-pointer hover:border-sky-500/50 transition-all group relative max-w-sm"
+                    onClick={() => {
+                      const v = message.vehicles?.find(veh => veh.image === src || veh.model === alt);
+                      onImageClick?.(src || '', v);
+                      // Track interest on image click
+                      import('./lib/leads').then(({ saveLead }) => {
+                        if (saveLead) {
+                          saveLead({
+                            type: 'image_interaction',
+                            imageUrl: src,
+                            vehicle: alt,
+                            timestamp: Date.now()
+                          });
+                        }
+                      });
+                    }}
+                  >
+                    <span className="relative block aspect-[16/9] bg-[#1a1a1a]">
+                      <img 
+                        src={src} 
+                        alt={alt} 
+                        className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-500 opacity-100" 
+                        referrerPolicy="no-referrer"
+                      />
+                      <span className="absolute top-3 right-3">
+                        <span className="text-[10px] font-black text-white uppercase tracking-widest bg-sky-500/95 backdrop-blur-md px-2.5 py-1 rounded-lg shadow-lg border border-white/10">Ver Galería</span>
+                      </span>
+                    </span>
+                    <span className="p-3 bg-black/60 text-sm font-bold uppercase tracking-widest text-white flex justify-between items-center backdrop-blur-md border-t border-white/5">
+                      <span>{alt || "GT Auto Imports"}</span>
+                      <span className="text-sky-400 group-hover:translate-x-1 transition-transform text-xs font-black">WhatsApp →</span>
+                    </span>
+                  </span>
+                )
+              }}
+            >
+              {cleanContent}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        {showPreaprobacionCard && (
+          <div style={{ margin: '12px 0', padding: '16px', borderRadius: '12px', background: '#f4f7ff', textAlign: 'center', color: '#1e293b', border: '1px solid #e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
+            <strong style={{ color: '#0f172a', fontSize: '18px', fontWeight: 'bold' }}>¿Quieres acelerar el proceso?</strong><br/><br/>
+            Completa tu preaprobación segura en línea y podremos mostrarte las mejores opciones disponibles.<br/><br/>
+            <a href="https://gtautopr.com/pre-aprobacion/"
+               target="_blank"
+               rel="noopener noreferrer"
+               style={{ background: '#4F46E5', color: 'white', padding: '12px 20px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', display: 'inline-block', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
+               ✅ Precalificarme ahora
+            </a>
+          </div>
+        )}
+      </div>
+
+      {isBot && message.isBookingForm && (
+        <div className="w-full mt-2">
+          <BookingForm onSuccess={(data) => {
+            console.log("Booking confirmed", data);
+          }} />
+        </div>
+      )}
+
+      {isBot && message.appointmentConfirmed && (
+        <div className="w-full mt-3 max-w-sm">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-gradient-to-br from-sky-950/40 to-black/80 border border-sky-500/30 rounded-2xl p-6 shadow-2xl relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl -z-10" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-xs font-black">✓</div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-sky-400 leading-none mb-1">Pase de Cita VIP</p>
+                <h4 className="text-sm font-black text-white uppercase italic tracking-tighter leading-none">GT AUTO IMPORTS</h4>
+              </div>
+            </div>
+            
+            <div className="space-y-2 border-t border-white/5 pt-3">
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-300">Asesor:</span>
+                <span className="text-white font-bold">Camilo (AI)</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-300">Estado de Sincronización:</span>
+                <span className="text-emerald-400 font-bold uppercase tracking-widest text-[9px] flex items-center gap-1">● GOOGLE SHEET & CALENDAR</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-300">Ubicación del Concesionario:</span>
+                <span className="text-white font-bold text-right text-[10px]">PR-2 km 26.1, Dorado, PR</span>
+              </div>
+            </div>
+
+            <div className="mt-4 bg-[#0a0a0a]/80 rounded-xl p-3 border border-white/5 text-center">
+              <p className="text-[9px] font-black text-sky-300 uppercase tracking-widest">¡Tu cita ha sido notificada al dueño por email y registrada con éxito!</p>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {hasVehicles && (
+        <div className="w-full overflow-hidden mt-1">
+          <div className="flex gap-4 overflow-x-auto pb-4 px-1 scrollbar-hide snap-x no-scrollbar">
+            {message.vehicles!.map((v) => (
+              <motion.div
+                key={v.id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex-shrink-0 w-[240px] snap-start"
+              >
+                <div 
+                  onClick={() => onVehicleClick?.(v)}
+                  className="bg-[#121212] border border-white/10 rounded-2xl overflow-hidden cursor-pointer hover:border-sky-500/50 transition-all group shadow-xl"
+                >
+                  <div className="relative h-36 overflow-hidden bg-[#1a1a1a]">
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onImageClick?.(v.image, v);
+                      }}
+                      className="cursor-zoom-in w-full h-full"
+                    >
+                      <img 
+                        src={v.image} 
+                        alt={v.model} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-100" 
+                      />
+                    </div>
+                    <div className="absolute top-2 right-2 pointer-events-none">
+                      <span className="bg-sky-500/90 backdrop-blur-md text-[9px] font-black px-2 py-1 rounded-lg text-white uppercase shadow-lg border border-white/10">Certificado</span>
+                    </div>
+                  </div>
+                  <div className="p-4 flex flex-col gap-3 bg-black/40 border-t border-white/5">
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[10px] font-black text-sky-400 uppercase tracking-widest leading-none">{v.year} {v.make}</p>
+                      <h5 className="text-base font-black text-white uppercase italic tracking-tighter leading-tight group-hover:text-sky-400 transition-colors">{v.model}</h5>
+                    </div>
+                    
+                    <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-zinc-400 font-round font-bold uppercase tracking-widest leading-none mb-1.5">Precio Online</span>
+                        <span className="text-lg font-mono font-black text-white tracking-tighter leading-none">${v.price.toLocaleString()}</span>
+                      </div>
+                      <div className="p-2 bg-sky-500/10 rounded-lg group-hover:bg-sky-500 transition-colors">
+                        <ChevronRight size={18} className="text-sky-400 group-hover:text-white" />
+                      </div>
+                    </div>
+                    {(v.mpg || v.mileage) && (
+                      <div className="flex gap-4 pt-1.5 border-t border-white/5">
+                        {v.mileage && <span className="text-xs text-zinc-100 font-round font-bold uppercase tracking-tight">{v.mileage}</span>}
+                        {v.mpg && <span className="text-xs text-emerald-400 font-round font-bold uppercase tracking-tight">{v.mpg}</span>}
+                      </div>
+                    )}
+                    {v.specialOffer && (
+                      <div className="bg-sky-950/30 border border-sky-500/20 px-2 py-1 rounded text-xs text-sky-300 font-bold uppercase tracking-tighter w-fit mt-1">
+                        {v.specialOffer}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+
+    </motion.div>
+  );
+}
+
+function VehicleCard({ vehicle, onImageClick, onChatClick }: { vehicle: Vehicle, onImageClick?: (url: string, v?: Vehicle) => void, onChatClick?: (v: Vehicle) => void }) {
+  const estimatedPayment = Math.round((vehicle.price * 1.1) / 72); // Super simple estimate
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="bg-zinc-950 border border-white/[0.08] rounded-[2.5rem] overflow-hidden group hover:border-sky-500/30 transition-all duration-700 shadow-3xl flex flex-col h-full"
+    >
+      <div className="h-72 bg-[#101010] overflow-hidden relative shrink-0 border-b border-white/5">
+        <div 
+          onClick={() => onImageClick?.(vehicle.image, vehicle)}
+          className="cursor-zoom-in w-full h-full"
+        >
+          <img 
+            src={vehicle.image} 
+            alt={`${vehicle.make} ${vehicle.model}`}
+            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-100"
+          />
+        </div>
+        
+        <div className="absolute top-6 left-6 flex gap-2 pointer-events-none">
+          <div className="bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.6)] text-xs font-black px-3 py-1.5 rounded-lg uppercase tracking-wider text-white">
+            {vehicle.year}
+          </div>
+          <div className="bg-black/80 backdrop-blur-md text-xs font-black px-3 py-1.5 rounded-lg uppercase tracking-wider text-white border border-white/10">
+            Certified
+          </div>
+        </div>
+
+        <div className="absolute bottom-6 left-8 pointer-events-none">
+           <span className="text-white/10 font-black text-6xl uppercase tracking-tighter block leading-none select-none">
+            {vehicle.make}
+           </span>
+        </div>
+      </div>
+      <div className="p-8 space-y-6">
+        <div 
+          onClick={() => onImageClick?.(vehicle.image, vehicle)}
+          className="flex flex-col gap-1 cursor-pointer"
+          title="Ver más detalles"
+        >
+          <h4 className="text-3xl font-black italic uppercase tracking-tighter text-white group-hover:text-sky-400 transition-colors leading-none">
+            {vehicle.model}
+          </h4>
+          <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-[0.2em] leading-none mt-2">
+            Unidad Certificada & Inspeccionada
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between py-4 border-y border-white/5">
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase font-black text-zinc-300 tracking-widest mb-1">Precio Online</span>
+            <div className="flex items-center gap-2">
+              <span className="text-3xl font-mono text-white font-black tracking-tighter">
+                ${vehicle.price.toLocaleString()}
+              </span>
+              {vehicle.price > 0 && vehicle.price < 25000 && (
+                <span className="bg-emerald-500 text-black text-[7px] px-1.5 py-0.5 rounded-full font-black uppercase italic tracking-tighter transform -skew-x-12">Oferta</span>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] uppercase font-black text-sky-400 tracking-widest mb-1">Est. Mensual</span>
+            <span className="text-2xl font-mono text-white font-black tracking-tighter">
+              ${estimatedPayment}/mo*
+            </span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
+            <Fuel size={14} className="text-sky-400" />
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-1">Millaje</span>
+              <span className="text-sm uppercase font-black text-zinc-100 tracking-wider font-mono">{vehicle.mileage}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
+            <ShieldCheck size={14} className="text-sky-400" />
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-1">Inspección</span>
+              <span className="text-sm uppercase font-black text-zinc-100 tracking-wider font-mono">115 Ptos</span>
+            </div>
+          </div>
+        </div>
+
+        {vehicle.specialOffer && (
+          <div className="bg-sky-500/10 border border-sky-500/30 p-4 rounded-2xl">
+            <span className="text-[10px] uppercase font-black text-sky-400 tracking-widest block mb-1">Oferta Especial</span>
+            <p className="text-sm font-bold text-white tracking-tight">{vehicle.specialOffer}</p>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2 pt-2">
+          <button 
+            className="w-full bg-white text-black font-round font-black py-5 rounded-[1.5rem] text-sm uppercase tracking-[0.2em] transition-all hover:bg-sky-500 hover:text-white shadow-2xl active:scale-95 flex items-center justify-center gap-3 group/btn"
+            onClick={() => onChatClick?.(vehicle)}
+          >
+            Hablar con Experto
+            <MessageSquare size={16} className="group-hover/btn:scale-110 transition-transform" />
+          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+              className="flex-1 bg-amber-500 text-zinc-950 font-round font-black py-4 rounded-[1.5rem] text-[10px] uppercase tracking-[0.15em] hover:bg-amber-400 transition-all shadow-xl flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              Pre-Cualifica <ShieldCheck size={14} className="text-zinc-950 shrink-0" />
+            </button>
+            <button 
+              onClick={() => window.open(`https://wa.me/17872788000?text=Hola! Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} de ${vehicle.price}`, '_blank')}
+              className="w-12 bg-emerald-600 text-white rounded-[1.5rem] flex items-center justify-center hover:bg-emerald-500 transition-all shadow-xl shrink-0"
+              title="WhatsApp"
+            >
+              <MessageSquare size={18} />
+            </button>
+            <button 
+              onClick={() => window.open('tel:17872788000', '_self')}
+              className="w-12 bg-sky-600 text-white rounded-[1.5rem] flex items-center justify-center hover:bg-sky-500 transition-all shadow-xl shrink-0"
+              title="Llamar"
+            >
+              <Phone size={18} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function SpecItem({ label, value }: { label: string, value: string }) {
+  return (
+    <li className="flex items-center justify-between border-b border-white/5 pb-2">
+      <span className="text-[10px] uppercase font-black text-zinc-300 tracking-widest">{label}</span>
+      <span className="text-sm font-bold text-white tracking-tight">{value}</span>
+    </li>
+  );
+}
+
+function BenefitCard({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
+  return (
+    <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-colors">
+      <div className="w-10 h-10 rounded-xl bg-sky-500/10 flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div>
+        <h5 className="text-sm font-black uppercase tracking-widest text-white mb-1">{title}</h5>
+        <p className="text-xs text-zinc-300 font-bold leading-tight">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="bg-sky-500/10 border border-sky-500/20 px-5 py-4 rounded-3xl rounded-tl-none flex gap-1.5 items-center w-fit backdrop-blur-xl">
+        <motion.div 
+          animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }} 
+          transition={{ repeat: Infinity, duration: 1, delay: 0 }}
+          className="w-1.5 h-1.5 bg-sky-400 rounded-full" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }} 
+          transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
+          className="w-1.5 h-1.5 bg-sky-400 rounded-full" 
+        />
+        <motion.div 
+          animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }} 
+          transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
+          className="w-1.5 h-1.5 bg-sky-400 rounded-full" 
+        />
+      </div>
+    </div>
+  );
+}

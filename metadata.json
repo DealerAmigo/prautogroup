@@ -1,0 +1,12 @@
+{
+  "name": "GT Auto Imports | IA Salesman",
+  "description": "Plataforma inteligente de ventas de autos para GT Auto Imports en Dorado. Camilo AI gestiona inventario, captación de leads y citas en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
+    "AI-Powered Sales Concierge",
+    "Real-time Inventory Management",
+    "Automated Lead Gen & CRM",
+    "Appointment Scheduling"
+  ]
+}
