@@ -1,7 +1,7 @@
 import { Vehicle } from "../types";
 
-const MOCK_INVENTORY: Vehicle[] = [
 // Base inventory for when sheets are not connected or for testing
+const MOCK_INVENTORY: Vehicle[] = [
   {
     id: "1",
     make: "BMW",

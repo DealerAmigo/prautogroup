@@ -38,14 +38,6 @@ export async function saveLead(leadData: any) {
   try {
     const token = await getAccessToken();
     if (token) {
-      const phone = data.telefono || data.phone || "";
-      const isFakeOrEmptyPhone = !phone || phone.trim() === "" || phone.trim().toLowerCase() === "n/a" || phone.trim().toLowerCase() === "no tiene";
-      
-      if (isFakeOrEmptyPhone) {
-        console.log("[Workspace Integration] Missing valid phone number. Skipping direct sync.");
-        return;
-      }
-
       console.log("[Workspace Integration] Active Google token found. Performing direct sync...");
       
       // A. Guardar fila en Google Sheets directamente

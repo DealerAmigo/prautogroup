@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Car, ChevronRight, ChevronLeft, MapPin, ShieldCheck, Fuel, Phone, MessageSquare, Menu, X, Sparkles, RotateCcw, ExternalLink } from 'lucide-react';
+import { Send, Car, ChevronRight, ChevronLeft, MapPin, ShieldCheck, Fuel, Phone, MessageSquare, Menu, X, Sparkles, RotateCcw, ExternalLink, Settings2, Gauge } from 'lucide-react';
 import { ChatMessage, Vehicle } from './types';
 import { createSalesmanChat } from './lib/ai';
 import { getInventory, searchVehicles, getCachedInventory } from './lib/inventory';
@@ -45,6 +45,7 @@ export default function App() {
     }
   });
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedGalleryVehicle, setSelectedGalleryVehicle] = useState<Vehicle | null>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'inventory'>(() => {
     // Dentro del widget embebido (iframe en gtautopr.com) arranca en chat.
     // Si se visita la URL de Cloud Run directo, se mantiene el comportamiento original.
@@ -128,9 +129,11 @@ export default function App() {
   
   const chatRef = useRef<any>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  // Rastrea si ya se envió el evento "nuevo_lead" en esta conversación,
-  // para que el GAS no repita el email de "nuevo lead" en cada actualización.
-  const leadEventTypeRef = useRef<'nuevo_lead' | 'actualizacion'>('nuevo_lead');
+
+  const handleGalleryClick = (vehicle: Vehicle) => {
+    setSelectedGalleryVehicle(vehicle);
+    setActiveImageIndex(0);
+  };
 
   const handleImageClick = async (imageUrl: string, vehicleData?: Vehicle) => {
     let vehicle = vehicleData;
@@ -491,11 +494,9 @@ export default function App() {
             fecha_cita: appointmentDate,
             notas: appointmentNotes,
             type: 'ai_appointment_confirmation',
-            eventType: 'cita_confirmada',
             fullText: responseTextRaw,
             conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
           });
-          leadEventTypeRef.current = 'actualizacion';
         } catch (e) {
           console.error("Error parsing CITA_CONFIRMADA data:", e);
         }
@@ -510,11 +511,9 @@ export default function App() {
         saveLead({
           ...leadDataObj,
           type: 'ai_lead_capture',
-          eventType: leadEventTypeRef.current,
           fullText: responseTextRaw,
           conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
         });
-        leadEventTypeRef.current = 'actualizacion';
       }
 
       // 3. Process show vehicle request
@@ -588,7 +587,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-black overflow-hidden selection:bg-sky-500 selection:text-white">
+    <div className="flex flex-col h-[100dvh] bg-black overflow-hidden selection:bg-sky-500 selection:text-white">
       {/* Lightbox Modal */}
       <AnimatePresence>
         {selectedImage && (
@@ -613,9 +612,9 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-0 bg-[#080808] rounded-[3rem] overflow-hidden border border-white/10 shadow-[0_80px_160px_rgba(0,0,0,0.9)]"
+              className="relative w-full max-w-7xl lg:max-h-[90vh] grid grid-cols-1 lg:grid-cols-2 gap-0 bg-[#080808] rounded-[3rem] overflow-hidden border border-white/10 shadow-[0_80px_160px_rgba(0,0,0,0.9)]"
             >
-              <div className="relative aspect-square lg:aspect-auto h-full min-h-[400px] group/img flex items-center justify-center bg-black/40">
+              <div className="relative aspect-square lg:aspect-auto h-full lg:max-h-[90vh] min-h-[400px] group/img flex items-center justify-center bg-black/40">
                 <AnimatePresence mode="wait">
                   <motion.img 
                     key={activeImageIndex}
@@ -708,10 +707,11 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="p-8 md:p-16 flex flex-col justify-between bg-[#0a0a0a] relative">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 blur-[120px] rounded-full pointer-events-none" />
-                
-                <div>
+              <div className="p-6 md:p-10 flex flex-col justify-start bg-[#0a0a0a] relative overflow-y-auto overflow-x-hidden custom-scrollbar h-full lg:max-h-[90vh]">
+                <div className="w-full">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-sky-500/5 blur-[120px] rounded-full pointer-events-none" />
+                  
+                  <div>
                   <div className="flex items-center justify-between mb-10">
                     <div className="flex items-center gap-3">
                       <div className="h-[2px] w-12 bg-sky-500" />
@@ -799,42 +799,175 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="mt-16 flex flex-col sm:flex-row gap-5 relative z-10">
+                <div className="mt-auto pt-10 grid grid-cols-[1fr_auto_auto] xl:flex xl:flex-row gap-2 xl:gap-5 relative z-10">
                   <button 
                     onClick={() => {
                       if (selectedVehicle) {
-                        handleSend(`Me interesa el ${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}. ¿Cuáles son los próximos pasos para el financiamiento?`);
+                        const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}**. ¿En qué te puedo ayudar? Puedo darte más detalles sobre el motor, transmisión, opciones de financiamiento o coordinar una cita.`;
+                        const newAssistantMessage = {
+                          id: Date.now().toString(),
+                          role: 'assistant' as const,
+                          content: msgText,
+                          timestamp: Date.now()
+                        };
+                        setMessages(prev => [...prev, newAssistantMessage]);
+                        if (chatRef.current) {
+                          chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
+                        }
                         setSelectedImage(null);
                         setSelectedVehicle(null);
                         setActiveTab('chat');
                       }
                     }}
-                    className="flex-1 bg-white text-black font-black py-7 rounded-3xl text-xs uppercase tracking-[0.3em] transition-all hover:bg-sky-500 hover:text-white shadow-2xl shadow-white/5 active:scale-95 group/btn"
+                    className="col-span-1 xl:flex-1 bg-white text-sky-600 font-round font-black py-4 xl:py-7 rounded-[1.5rem] xl:rounded-3xl text-[11px] xl:text-[10px] uppercase tracking-[0.2em] xl:tracking-[0.3em] transition-all hover:bg-sky-50 shadow-2xl active:scale-95 flex items-center justify-center gap-2 xl:gap-3 group/btn"
                   >
-                    Hablar con un Experto 
-                    <ChevronRight size={16} className="inline ml-2 group-hover/btn:translate-x-2 transition-transform" />
-                  </button>
-                  <button 
-                    onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
-                    className="px-10 py-7 bg-amber-500 text-zinc-950 font-black rounded-3xl text-[10px] uppercase tracking-[0.25em] hover:bg-amber-400 transition-all shadow-2xl shadow-amber-500/20 active:scale-95 flex items-center justify-center gap-3 whitespace-nowrap"
-                  >
-                    Pre-Cualifica <ShieldCheck size={18} className="text-zinc-950" />
+                    <span className="relative flex h-2 w-2 xl:h-2.5 xl:w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500"></span>
+                    </span>
+                    LIVE CHAT
+                    <ChevronRight size={16} className="group-hover/btn:translate-x-1 xl:group-hover/btn:translate-x-2 transition-transform" />
                   </button>
                   <button 
                     onClick={() => window.open(`https://wa.me/17872788000?text=Hola! Me interesa el ${selectedVehicle?.year} ${selectedVehicle?.make} ${selectedVehicle?.model}`, '_blank')}
-                    className="px-10 py-7 bg-emerald-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-[0.25em] hover:bg-emerald-500 transition-all shadow-2xl shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-3"
+                    className="col-span-1 w-12 sm:w-14 xl:w-auto xl:px-10 xl:py-7 bg-emerald-600 text-white rounded-[1.5rem] xl:rounded-3xl flex items-center justify-center hover:bg-emerald-500 transition-all shadow-xl xl:shadow-2xl xl:shadow-emerald-600/20 shrink-0 xl:font-black xl:text-[10px] xl:uppercase xl:tracking-[0.25em] gap-3"
+                    title="WhatsApp"
                   >
-                    WhatsApp <MessageSquare size={18} />
+                    <span className="hidden xl:inline">WhatsApp</span> <MessageSquare size={18} className="xl:hidden" /> <MessageSquare size={18} className="hidden xl:block" />
                   </button>
                   <button 
                     onClick={() => window.open('tel:17872788000', '_self')}
-                    className="px-10 py-7 bg-sky-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-[0.25em] hover:bg-sky-500 transition-all shadow-2xl shadow-sky-600/20 active:scale-95 flex items-center justify-center gap-3"
+                    className="col-span-1 w-12 sm:w-14 xl:w-auto xl:px-10 xl:py-7 bg-sky-600 text-white rounded-[1.5rem] xl:rounded-3xl flex items-center justify-center hover:bg-sky-500 transition-all shadow-xl xl:shadow-2xl xl:shadow-sky-600/20 shrink-0 xl:font-black xl:text-[10px] xl:uppercase xl:tracking-[0.25em] gap-3"
+                    title="Llamar"
                   >
-                    Llamar <Phone size={18} />
+                    <span className="hidden xl:inline">Llamar</span> <Phone size={18} className="xl:hidden" /> <Phone size={18} className="hidden xl:block" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (selectedVehicle) {
+                        const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}** y en sus opciones de financiamiento. ¿Te gustaría pre-cualificar sin indagación de crédito o tienes alguna duda sobre el proceso?`;
+                        const newAssistantMessage = {
+                          id: Date.now().toString(),
+                          role: 'assistant' as const,
+                          content: msgText,
+                          timestamp: Date.now()
+                        };
+                        setMessages(prev => [...prev, newAssistantMessage]);
+                        if (chatRef.current) {
+                          chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
+                        }
+                        setSelectedImage(null);
+                        setSelectedVehicle(null);
+                        setActiveTab('chat');
+                      }
+                    }}
+                    className="col-span-3 xl:flex-1 w-full bg-white text-emerald-600 font-round font-black py-4 xl:py-7 rounded-[1.5rem] xl:rounded-3xl text-[12px] xl:text-[13px] uppercase tracking-[0.2em] xl:tracking-[0.25em] hover:bg-emerald-50 transition-all shadow-xl xl:shadow-2xl xl:shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2 xl:gap-3 whitespace-nowrap"
+                  >
+                    Financiamiento Disponible <ShieldCheck size={20} className="text-emerald-500" />
                   </button>
                 </div>
 
                 {/* Botón flotante fixed arriba a la derecha maneja el cierre de manera consistente */}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Pure Gallery Modal */}
+      <AnimatePresence>
+        {selectedGalleryVehicle && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/98 flex items-center justify-center p-4 md:p-12 backdrop-blur-2xl overflow-y-auto"
+            onClick={() => setSelectedGalleryVehicle(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-5xl lg:max-h-[90vh] bg-[#080808] rounded-[3rem] overflow-hidden border border-white/10 shadow-[0_80px_160px_rgba(0,0,0,0.9)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="relative aspect-square md:aspect-video lg:h-[80vh] min-h-[400px] w-full group/img flex items-center justify-center bg-black/40">
+                <AnimatePresence mode="wait">
+                  <motion.img 
+                    key={activeImageIndex}
+                    src={selectedGalleryVehicle.images && selectedGalleryVehicle.images.length > 0 ? selectedGalleryVehicle.images[activeImageIndex] : selectedGalleryVehicle.image} 
+                    alt="Enlarged view" 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.05 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-full h-full object-contain transition-transform duration-1000 group-hover/img:scale-105" 
+                  />
+                </AnimatePresence>
+                
+                {/* Left Arrow Button */}
+                {selectedGalleryVehicle.images && selectedGalleryVehicle.images.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveImageIndex((prev) => (prev === 0 ? selectedGalleryVehicle.images.length - 1 : prev - 1));
+                    }}
+                    className="absolute left-6 top-1/2 -translate-y-1/2 z-20 text-white bg-black/60 hover:bg-sky-500 transition-all p-4 rounded-full border border-white/10 hover:scale-110 active:scale-95 flex items-center justify-center shadow-2xl"
+                    title="Anterior"
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                )}
+
+                {/* Right Arrow Button */}
+                {selectedGalleryVehicle.images && selectedGalleryVehicle.images.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveImageIndex((prev) => (prev === selectedGalleryVehicle.images.length - 1 ? 0 : prev + 1));
+                    }}
+                    className="absolute right-6 top-1/2 -translate-y-1/2 z-20 text-white bg-black/60 hover:bg-sky-500 transition-all p-4 rounded-full border border-white/10 hover:scale-110 active:scale-95 flex items-center justify-center shadow-2xl"
+                    title="Siguiente"
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                )}
+
+                {/* Page Indicator */}
+                {selectedGalleryVehicle.images && selectedGalleryVehicle.images.length > 1 && (
+                  <div className="absolute top-8 right-8 z-20 bg-black/70 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-white/10 text-xs font-black text-white uppercase tracking-widest font-mono">
+                    {activeImageIndex + 1} / {selectedGalleryVehicle.images.length}
+                  </div>
+                )}
+
+                {/* Thumbnail Strip */}
+                {selectedGalleryVehicle.images && selectedGalleryVehicle.images.length > 1 && (
+                  <div className="absolute bottom-12 left-6 right-6 z-20 flex gap-2 justify-center overflow-x-auto no-scrollbar py-1.5 max-w-full backdrop-blur-sm bg-black/20 rounded-2xl border border-white/5 p-2">
+                    {selectedGalleryVehicle.images.map((imgUrl, idx) => (
+                      <button
+                        key={idx}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveImageIndex(idx);
+                        }}
+                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 shrink-0 transition-all duration-300 hover:scale-105 active:scale-95 ${
+                          idx === activeImageIndex ? "border-sky-500 scale-110 shadow-lg shadow-sky-500/30" : "border-white/20 hover:border-white/55 opacity-60 hover:opacity-100"
+                        }`}
+                      >
+                        <img src={imgUrl} className="w-full h-full object-cover" alt={`Photo ${idx + 1}`} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                <button 
+                  onClick={() => setSelectedGalleryVehicle(null)}
+                  className="absolute top-8 left-8 z-20 text-white bg-black/60 backdrop-blur-md p-4 rounded-full hover:bg-sky-500 transition-all border border-white/10"
+                  title="Cerrar galería"
+                >
+                  <X size={24} />
+                </button>
               </div>
             </motion.div>
           </motion.div>
@@ -874,14 +1007,14 @@ export default function App() {
               {/* Clasificados.com */}
               <button 
                 onClick={() => window.open('https://www.clasificadosonline.com/PartnersListingTranspID.asp?ID=55011', '_blank')}
-                className="hidden md:flex px-4 h-9 bg-blue-600 rounded-xl items-center justify-center text-white font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-90 transition-transform whitespace-nowrap gap-2 shrink-0"
+                className="hidden md:flex px-4 h-9 bg-red-600 rounded-xl items-center justify-center text-white font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-90 transition-transform whitespace-nowrap gap-2 shrink-0"
                 title="Clasificados.com"
               >
                 Clasificados.com <ExternalLink size={12} />
               </button>
               <button 
                 onClick={() => window.open('https://www.clasificadosonline.com/PartnersListingTranspID.asp?ID=55011', '_blank')}
-                className="flex md:hidden w-9 h-9 bg-blue-600 rounded-xl items-center justify-center text-white shadow-lg active:scale-90 transition-transform shrink-0"
+                className="flex md:hidden w-9 h-9 bg-red-600 rounded-xl items-center justify-center text-white shadow-lg active:scale-90 transition-transform shrink-0"
                 title="Clasificados.com"
               >
                 <ExternalLink size={18} />
@@ -998,7 +1131,7 @@ export default function App() {
           </div>
 
           {/* Input Bar */}
-          <div className="p-5 bg-black/95 backdrop-blur-2xl border-t border-zinc-900 shrink-0">
+          <div className="p-4 pb-6 md:p-5 md:pb-5 bg-black/95 backdrop-blur-2xl border-t border-zinc-900 shrink-0">
             <div className="relative group flex gap-3">
               <div className="relative flex-1">
                 <input
@@ -1012,9 +1145,9 @@ export default function App() {
                 <button 
                   onClick={() => handleSend()}
                   disabled={!inputText.trim() || isTyping}
-                  className="absolute right-2 top-2 bottom-2 aspect-square bg-sky-500 rounded-xl hover:bg-sky-400 disabled:bg-white/5 disabled:text-slate-700 text-white transition-all shadow-[0_8px_20px_rgba(14,165,233,0.3)] active:scale-90 flex items-center justify-center p-0"
+                  className="absolute right-2 top-2 bottom-2 aspect-square bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl hover:from-sky-300 hover:to-blue-500 disabled:from-zinc-800 disabled:to-zinc-900 disabled:text-slate-500 disabled:shadow-none text-white transition-all duration-300 shadow-[0_0_20px_rgba(14,165,233,0.6)] hover:shadow-[0_0_30px_rgba(14,165,233,0.8)] hover:-translate-y-0.5 active:scale-95 flex items-center justify-center p-0 group"
                 >
-                  <Send size={18} />
+                  <Send size={18} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </button>
               </div>
               <button
@@ -1027,30 +1160,32 @@ export default function App() {
             </div>
             {/* Mobile Tab Switcher in Chat Footer */}
             <div className="flex md:hidden items-center justify-center mt-4 w-full px-4">
-              <div className="flex bg-zinc-950 p-1.5 rounded-2xl border border-white/5 w-full max-w-[320px] shadow-2xl">
+              <div className="flex gap-2 w-full max-w-[320px]">
                 <button 
                   onClick={() => setActiveTab('chat')}
                   className={cn(
-                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center",
-                    activeTab === 'chat' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center relative",
+                    "bg-sky-500",
+                    activeTab === 'chat' ? "text-white shadow-lg shadow-sky-500/40 ring-2 ring-sky-400 scale-105 z-10" : "text-sky-100 hover:text-white scale-95"
                   )}
                 >
                   Chat
+                  {activeTab === 'inventory' && (
+                    <span className="absolute top-2.5 right-8 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                  )}
                 </button>
                 <button 
                   onClick={() => setActiveTab('inventory')}
                   className={cn(
                     "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center relative",
-                    activeTab === 'inventory' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                    "bg-white",
+                    activeTab === 'inventory' ? "text-sky-600 shadow-lg shadow-white/20 ring-2 ring-white scale-105 z-10" : "text-slate-500 hover:text-sky-600 scale-95"
                   )}
                 >
                   Inventario
-                  {activeTab === 'chat' && (
-                    <span className="absolute top-2.5 right-6 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                    </span>
-                  )}
                 </button>
               </div>
             </div>
@@ -1076,8 +1211,9 @@ export default function App() {
           activeTab === 'chat' ? "hidden md:flex" : "flex"
         )}>
 
-          <div className="flex-1 overflow-y-auto p-6 md:p-14 lg:p-20 custom-scrollbar">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-8">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 lg:p-10 custom-scrollbar">
+            <div className="max-w-[1400px] mx-auto w-full">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-6">
               <div className="max-w-2xl">
                 <div className="flex items-center gap-3 mb-4">
                   <span className="h-[2px] w-12 bg-sky-500" />
@@ -1093,10 +1229,12 @@ export default function App() {
               <div className="flex flex-col gap-4 w-full md:w-auto">
                  <div className="flex gap-3">
                   <button 
-                    onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+                    onClick={() => {
+                      document.getElementById('inventory-filters')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
                     className="flex-1 md:flex-none px-4 py-5 bg-white text-zinc-950 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-zinc-100 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                   >
-                    PRE-CUALIFICA <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                    INVENTARIO <Car size={14} className="text-zinc-950 shrink-0" />
                   </button>
                   <button 
                     onClick={() => handleSend("¿Me pueden tasar mi trade-in?")}
@@ -1113,7 +1251,7 @@ export default function App() {
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 md:p-8 mb-12 relative overflow-hidden">
+            <div id="inventory-filters" className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-5 md:p-6 mb-8 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 blur-2xl rounded-full pointer-events-none" />
               
               <div className="flex flex-col gap-6">
@@ -1233,14 +1371,39 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 3xl:grid-cols-3 gap-10 lg:gap-14">
+              <div className="grid grid-cols-1 xl:grid-cols-2 3xl:grid-cols-3 gap-6 lg:gap-8">
                 {filteredInventory.map(v => (
                   <VehicleCard 
                     key={v.id} 
                     vehicle={v} 
                     onImageClick={handleImageClick} 
+                    onGalleryClick={handleGalleryClick}
                     onChatClick={(vehicle) => {
-                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model}. ¿Está disponible para verlo hoy?`);
+                      const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${vehicle.year} ${vehicle.make} ${vehicle.model}**. ¿En qué te puedo ayudar? Puedo darte más detalles sobre el motor, transmisión, opciones de financiamiento o coordinar una cita.`;
+                      const newAssistantMessage = {
+                        id: Date.now().toString(),
+                        role: 'assistant' as const,
+                        content: msgText,
+                        timestamp: Date.now()
+                      };
+                      setMessages(prev => [...prev, newAssistantMessage]);
+                      if (chatRef.current) {
+                        chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
+                      }
+                      setActiveTab('chat');
+                    }}
+                    onFinanceClick={(vehicle, estimatedPayment) => {
+                      const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${vehicle.year} ${vehicle.make} ${vehicle.model}** y sus opciones de financiamiento (estimado ${estimatedPayment}/mo). ¿Te gustaría pre-cualificar sin indagación de crédito o tienes alguna duda sobre el proceso?`;
+                      const newAssistantMessage = {
+                        id: Date.now().toString(),
+                        role: 'assistant' as const,
+                        content: msgText,
+                        timestamp: Date.now()
+                      };
+                      setMessages(prev => [...prev, newAssistantMessage]);
+                      if (chatRef.current) {
+                        chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
+                      }
                       setActiveTab('chat');
                     }}
                   />
@@ -1274,6 +1437,7 @@ export default function App() {
                 </div>
               </div>
             </div>
+            </div>
           </div>
 
           <footer className="h-20 md:h-16 bg-black border-t border-zinc-900 flex items-center px-6 md:px-10 justify-between shrink-0">
@@ -1291,30 +1455,32 @@ export default function App() {
 
             {/* Mobile Tab Switcher in Inventory Footer */}
             <div className="flex md:hidden items-center justify-center w-full">
-              <div className="flex bg-zinc-950 p-1.5 rounded-2xl border border-white/5 w-full max-w-[320px] shadow-2xl">
+              <div className="flex gap-2 w-full max-w-[320px]">
                 <button 
                   onClick={() => setActiveTab('chat')}
                   className={cn(
-                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center",
-                    activeTab === 'chat' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                    "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center relative",
+                    "bg-sky-500",
+                    activeTab === 'chat' ? "text-white shadow-lg shadow-sky-500/40 ring-2 ring-sky-400 scale-105 z-10" : "text-sky-100 hover:text-white scale-95"
                   )}
                 >
                   Chat
+                  {activeTab === 'inventory' && (
+                    <span className="absolute top-2.5 right-8 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                  )}
                 </button>
                 <button 
                   onClick={() => setActiveTab('inventory')}
                   className={cn(
                     "flex-1 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all text-center relative",
-                    activeTab === 'inventory' ? "bg-sky-500 text-white shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-white"
+                    "bg-white",
+                    activeTab === 'inventory' ? "text-sky-600 shadow-lg shadow-white/20 ring-2 ring-white scale-105 z-10" : "text-slate-500 hover:text-sky-600 scale-95"
                   )}
                 >
                   Inventario
-                  {activeTab === 'chat' && (
-                    <span className="absolute top-2.5 right-6 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
-                    </span>
-                  )}
                 </button>
               </div>
             </div>
@@ -1572,7 +1738,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
   );
 }
 
-function VehicleCard({ vehicle, onImageClick, onChatClick }: { vehicle: Vehicle, onImageClick?: (url: string, v?: Vehicle) => void, onChatClick?: (v: Vehicle) => void }) {
+function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGalleryClick }: { vehicle: Vehicle, onImageClick?: (url: string, v?: Vehicle) => void, onChatClick?: (v: Vehicle) => void, onFinanceClick?: (v: Vehicle, estimatedPayment: number) => void, onGalleryClick?: (v: Vehicle) => void }) {
   const estimatedPayment = Math.round((vehicle.price * 1.1) / 72); // Super simple estimate
 
   return (
@@ -1582,7 +1748,7 @@ function VehicleCard({ vehicle, onImageClick, onChatClick }: { vehicle: Vehicle,
       viewport={{ once: true }}
       className="bg-zinc-950 border border-white/[0.08] rounded-[2.5rem] overflow-hidden group hover:border-sky-500/30 transition-all duration-700 shadow-3xl flex flex-col h-full"
     >
-      <div className="h-72 bg-[#101010] overflow-hidden relative shrink-0 border-b border-white/5">
+      <div className="h-48 md:h-64 bg-[#101010] overflow-hidden relative shrink-0 border-b border-white/5">
         <div 
           onClick={() => onImageClick?.(vehicle.image, vehicle)}
           className="cursor-zoom-in w-full h-full"
@@ -1594,40 +1760,53 @@ function VehicleCard({ vehicle, onImageClick, onChatClick }: { vehicle: Vehicle,
           />
         </div>
         
-        <div className="absolute top-6 left-6 flex gap-2 pointer-events-none">
-          <div className="bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.6)] text-xs font-black px-3 py-1.5 rounded-lg uppercase tracking-wider text-white">
+        <div className="absolute top-4 left-4 md:top-6 md:left-6 flex gap-2 pointer-events-none">
+          <div className="bg-sky-500 shadow-[0_0_20px_rgba(14,165,233,0.6)] text-[10px] md:text-xs font-black px-2 md:px-3 py-1 md:py-1.5 rounded-lg uppercase tracking-wider text-white">
             {vehicle.year}
           </div>
-          <div className="bg-black/80 backdrop-blur-md text-xs font-black px-3 py-1.5 rounded-lg uppercase tracking-wider text-white border border-white/10">
+          <div className="bg-black/80 backdrop-blur-md text-[10px] md:text-xs font-black px-2 md:px-3 py-1 md:py-1.5 rounded-lg uppercase tracking-wider text-white border border-white/10">
             Certified
           </div>
         </div>
 
-        <div className="absolute bottom-6 left-8 pointer-events-none">
-           <span className="text-white/10 font-black text-6xl uppercase tracking-tighter block leading-none select-none">
+        {vehicle.images && vehicle.images.length > 1 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onGalleryClick?.(vehicle);
+            }}
+            className="absolute bottom-4 right-4 z-10 bg-black/80 backdrop-blur-md text-white border border-white/20 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 hover:bg-sky-500 hover:border-sky-400 transition-colors shadow-xl"
+            title="Ver más fotos"
+          >
+            Más fotos <span className="bg-white/20 px-1.5 py-0.5 rounded-md">{vehicle.images.length - 1}</span>
+          </button>
+        )}
+
+        <div className="absolute bottom-4 left-6 md:bottom-6 md:left-8 pointer-events-none">
+           <span className="text-white/10 font-black text-4xl md:text-6xl uppercase tracking-tighter block leading-none select-none">
             {vehicle.make}
            </span>
         </div>
       </div>
-      <div className="p-8 space-y-6">
+      <div className="p-3 md:p-6 space-y-2 md:space-y-4">
         <div 
           onClick={() => onImageClick?.(vehicle.image, vehicle)}
-          className="flex flex-col gap-1 cursor-pointer"
+          className="flex flex-col gap-0.5 md:gap-1 cursor-pointer"
           title="Ver más detalles"
         >
-          <h4 className="text-3xl font-black italic uppercase tracking-tighter text-white group-hover:text-sky-400 transition-colors leading-none">
-            {vehicle.model}
+          <h4 className="text-xl md:text-3xl font-black italic uppercase tracking-tighter text-white group-hover:text-sky-400 transition-colors leading-none">
+            {vehicle.make} {vehicle.model}
           </h4>
-          <p className="text-[10px] text-zinc-300 font-bold uppercase tracking-[0.2em] leading-none mt-2">
+          <p className="text-[9px] md:text-[10px] text-zinc-300 font-bold uppercase tracking-[0.2em] leading-none mt-1">
             Unidad Certificada & Inspeccionada
           </p>
         </div>
 
-        <div className="flex items-center justify-between py-4 border-y border-white/5">
+        <div className="flex items-center justify-between py-1.5 md:py-3 border-y border-white/5">
           <div className="flex flex-col">
-            <span className="text-[10px] uppercase font-black text-zinc-300 tracking-widest mb-1">Precio Online</span>
+            <span className="text-[9px] md:text-[10px] uppercase font-black text-zinc-300 tracking-widest mb-1">Precio Online</span>
             <div className="flex items-center gap-2">
-              <span className="text-3xl font-mono text-white font-black tracking-tighter">
+              <span className="text-xl md:text-3xl font-mono text-white font-black tracking-tighter">
                 ${vehicle.price.toLocaleString()}
               </span>
               {vehicle.price > 0 && vehicle.price < 25000 && (
@@ -1636,67 +1815,82 @@ function VehicleCard({ vehicle, onImageClick, onChatClick }: { vehicle: Vehicle,
             </div>
           </div>
           <div className="flex flex-col items-end">
-            <span className="text-[10px] uppercase font-black text-sky-400 tracking-widest mb-1">Est. Mensual</span>
-            <span className="text-2xl font-mono text-white font-black tracking-tighter">
+            <span className="text-[9px] md:text-[10px] uppercase font-black text-sky-400 tracking-widest mb-1">Est. Mensual</span>
+            <span className="text-lg md:text-2xl font-mono text-white font-black tracking-tighter">
               ${estimatedPayment}/mo*
             </span>
           </div>
         </div>
         
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-            <Fuel size={14} className="text-sky-400" />
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-1">Millaje</span>
-              <span className="text-sm uppercase font-black text-zinc-100 tracking-wider font-mono">{vehicle.mileage}</span>
+        <div className="grid grid-cols-2 gap-2 md:gap-4">
+          <div className="flex items-center gap-2 md:gap-3 bg-white/5 p-2 md:p-3 rounded-xl md:rounded-2xl border border-white/5">
+            <Settings2 size={12} className="text-sky-400 shrink-0" />
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-[9px] md:text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-0.5 md:mb-1">Motor</span>
+              <span className="text-xs md:text-sm uppercase font-black text-zinc-100 tracking-wider font-mono truncate">{vehicle.engine || 'V6'}</span>
             </div>
           </div>
-          <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5">
-            <ShieldCheck size={14} className="text-sky-400" />
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-1">Inspección</span>
-              <span className="text-sm uppercase font-black text-zinc-100 tracking-wider font-mono">115 Ptos</span>
+          <div className="flex items-center gap-2 md:gap-3 bg-white/5 p-2 md:p-3 rounded-xl md:rounded-2xl border border-white/5">
+            <Gauge size={12} className="text-sky-400 shrink-0" />
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-[9px] md:text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-0.5 md:mb-1">Trans</span>
+              <span className="text-xs md:text-sm uppercase font-black text-zinc-100 tracking-wider font-mono truncate">{vehicle.transmission || 'Auto'}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3 bg-white/5 p-2 md:p-3 rounded-xl md:rounded-2xl border border-white/5">
+            <Fuel size={12} className="text-sky-400 shrink-0" />
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-[9px] md:text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-0.5 md:mb-1">MPG</span>
+              <span className="text-xs md:text-sm uppercase font-black text-zinc-100 tracking-wider font-mono truncate">{vehicle.mpg || '24'}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3 bg-white/5 p-2 md:p-3 rounded-xl md:rounded-2xl border border-white/5">
+            <ShieldCheck size={12} className="text-sky-400 shrink-0" />
+            <div className="flex flex-col overflow-hidden">
+              <span className="text-[9px] md:text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-0.5 md:mb-1">Millas</span>
+              <span className="text-xs md:text-sm uppercase font-black text-zinc-100 tracking-wider font-mono truncate">{vehicle.mileage}</span>
             </div>
           </div>
         </div>
 
-        {vehicle.specialOffer && (
-          <div className="bg-sky-500/10 border border-sky-500/30 p-4 rounded-2xl">
-            <span className="text-[10px] uppercase font-black text-sky-400 tracking-widest block mb-1">Oferta Especial</span>
-            <p className="text-sm font-bold text-white tracking-tight">{vehicle.specialOffer}</p>
+        <button 
+          onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+          className="relative w-full mt-2 md:mt-3 bg-white border-2 border-emerald-400/60 p-3 md:p-5 rounded-[1rem] md:rounded-2xl flex items-center justify-between hover:bg-emerald-50 hover:border-emerald-500 transition-all group/finance shadow-[0_0_15px_rgba(16,185,129,0.2)] md:shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+        >
+          <div className="absolute inset-0 rounded-[1rem] md:rounded-2xl ring-2 md:ring-4 ring-emerald-400/30 animate-pulse pointer-events-none" />
+          <div className="flex flex-col items-start text-left relative z-10 pr-2">
+            <span className="text-sm md:text-lg font-black uppercase tracking-widest text-emerald-600 mb-0.5 md:mb-1 drop-shadow-[0_0_10px_rgba(52,211,153,0.3)]">Oferta de Financiamiento</span>
+            <span className="text-[10px] md:text-sm text-emerald-700 font-bold leading-tight">PRE-CUALIFICA SIN INDAGACION DE CREDITO y obtén más información sobre el proceso</span>
           </div>
-        )}
+          <ShieldCheck size={28} className="text-emerald-500 group-hover/finance:scale-110 transition-transform shrink-0 ml-1 md:ml-2 relative z-10" />
+        </button>
 
-        <div className="flex flex-col gap-2 pt-2">
+        <div className="flex gap-2 pt-1 md:pt-2">
           <button 
-            className="w-full bg-white text-black font-round font-black py-5 rounded-[1.5rem] text-sm uppercase tracking-[0.2em] transition-all hover:bg-sky-500 hover:text-white shadow-2xl active:scale-95 flex items-center justify-center gap-3 group/btn"
+            className="flex-1 bg-sky-500 text-white font-round font-black py-3 md:py-4 rounded-full md:rounded-[1.5rem] text-[10px] md:text-xs uppercase tracking-[0.2em] transition-all hover:bg-sky-400 shadow-2xl shadow-sky-500/20 active:scale-95 flex items-center justify-center gap-1.5 md:gap-2 group/btn"
             onClick={() => onChatClick?.(vehicle)}
           >
-            Hablar con Experto
-            <MessageSquare size={16} className="group-hover/btn:scale-110 transition-transform" />
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500"></span>
+            </span>
+            LIVE CHAT
+            <ChevronRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
           </button>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
-              className="flex-1 bg-amber-500 text-zinc-950 font-round font-black py-4 rounded-[1.5rem] text-[10px] uppercase tracking-[0.15em] hover:bg-amber-400 transition-all shadow-xl flex items-center justify-center gap-2 whitespace-nowrap"
-            >
-              Pre-Cualifica <ShieldCheck size={14} className="text-zinc-950 shrink-0" />
-            </button>
-            <button 
-              onClick={() => window.open(`https://wa.me/17872788000?text=Hola! Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} de ${vehicle.price}`, '_blank')}
-              className="w-12 bg-emerald-600 text-white rounded-[1.5rem] flex items-center justify-center hover:bg-emerald-500 transition-all shadow-xl shrink-0"
-              title="WhatsApp"
-            >
-              <MessageSquare size={18} />
-            </button>
-            <button 
-              onClick={() => window.open('tel:17872788000', '_self')}
-              className="w-12 bg-sky-600 text-white rounded-[1.5rem] flex items-center justify-center hover:bg-sky-500 transition-all shadow-xl shrink-0"
-              title="Llamar"
-            >
-              <Phone size={18} />
-            </button>
-          </div>
+          <button 
+            onClick={() => window.open(`https://wa.me/17872788000?text=Hola! Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} de ${vehicle.price}`, '_blank')}
+            className="w-10 h-10 md:w-14 md:h-auto bg-emerald-600 text-white rounded-full md:rounded-[1.5rem] flex items-center justify-center hover:bg-emerald-500 transition-all shadow-xl shrink-0"
+            title="WhatsApp"
+          >
+            <MessageSquare size={16} className="md:w-[18px] md:h-[18px]" />
+          </button>
+          <button 
+            onClick={() => window.open('tel:17872788000', '_self')}
+            className="w-10 h-10 md:w-14 md:h-auto bg-sky-600 text-white rounded-full md:rounded-[1.5rem] flex items-center justify-center hover:bg-sky-500 transition-all shadow-xl shrink-0"
+            title="Llamar"
+          >
+            <Phone size={16} className="md:w-[18px] md:h-[18px]" />
+          </button>
         </div>
       </div>
     </motion.div>

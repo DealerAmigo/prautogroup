@@ -1,156 +1,289 @@
 import { Vehicle } from "../src/types";
 import Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 export interface AIContext {
   inventory: Vehicle[];
   history: any[];
 }
 
+export interface AIResult {
+  intent: string;
+  message?: string;
+  // extracted structured data
+  leadId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  vehicleInterest?: string;
+  creditTier?: "A" | "B" | "C" | "D" | "No credit";
+  scoreInformado?: string;
+  tienePronto?: boolean;
+  cantidadPronto?: string;
+  tieneTradeIn?: boolean;
+  tradeAno?: string;
+  tradeMarca?: string;
+  tradeModelo?: string;
+  estadoTrade?: string;
+  agendoCita?: boolean;
+  fechaCita?: string;
+  wantsAppointment?: boolean;
+  wantsFinancingInfo?: boolean;
+  metodoPago?: "Financiamiento" | "Cash" | "No especificado";
+  confidence?: number;
+}
+
+// Initialize Gemini (guaranteed to be available via process.env.GEMINI_API_KEY in the workspace)
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    }
+  }
+});
+
+// Optional Anthropic client
 const anthropicKey = process.env.ANTHROPIC_API_KEY || process.env.AI_API_KEY;
 const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
 
-const geminiKey = process.env.GEMINI_API_KEY;
-const gemini = geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null;
-
-function getPRTime(): string {
+/**
+ * AI LAYER 1 (PURE INTERPRETER)
+ * NO BUSINESS LOGIC HERE
+ */
+export async function processAI(
+  message: string,
+  context: AIContext
+): Promise<AIResult> {
   try {
-    const options: Intl.DateTimeFormatOptions = {
-      timeZone: "America/Puerto_Rico",
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true
+    const inventoryText = context.inventory
+      ?.slice(0, 20)
+      .map(v => `${v.year} ${v.make} ${v.model} ${v.price}`)
+      .join("\n");
+
+    const prompt = `You are an AI intent extractor for a car dealership chatbot.
+Your ONLY job is to understand what the user wants and extract structured data from the entire conversation history.
+DO NOT:
+- give sales strategy
+- schedule appointments
+- decide CRM actions
+- write emails
+- simulate dealership flow
+
+Return ONLY valid JSON.
+User message:
+${message}
+
+Inventory (context):
+${inventoryText}
+
+Conversation history:
+${JSON.stringify(context.history?.slice(-8) || [])}
+
+Return format:
+{
+  "intent": "string",
+  "name": "string | null",
+  "phone": "string | null",
+  "email": "string | null",
+  "vehicleInterest": "string | null",
+  "creditTier": "A | B | C | D | No credit | null",
+  "scoreInformado": "string | null (Si el usuario no sabe o no dice, pon 'No sabe')",
+  "tienePronto": boolean | null,
+  "cantidadPronto": "string | null",
+  "tieneTradeIn": boolean | null,
+  "tradeAno": "string | null",
+  "tradeMarca": "string | null",
+  "tradeModelo": "string | null",
+  "estadoTrade": "string | null",
+  "agendoCita": boolean | null,
+  "fechaCita": "string | null",
+  "wantsAppointment": boolean,
+  "wantsFinancingInfo": boolean,
+  "metodoPago": "Financiamiento | Cash | No especificado",
+  "confidence": number (0-1)
+}`;
+
+    // If Anthropic key is available, we can use Claude
+    if (anthropic) {
+      try {
+        console.log("[AI Engine] Using Anthropic Claude for intent extraction...");
+        const msg = await anthropic.messages.create({
+          model: "claude-3-5-sonnet-20241022",
+          max_tokens: 1024,
+          temperature: 0.2,
+          system: "You are a precise data extractor. Always return only JSON.",
+          messages: [
+            { role: "user", content: prompt }
+          ]
+        });
+
+        const responseContent = msg.content[0].type === 'text' ? msg.content[0].text : '{}';
+        let parsed: AIResult;
+        try {
+            const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? jsonMatch[0] : responseContent;
+            parsed = JSON.parse(jsonString);
+            return parsed;
+        } catch (parseError) {
+          console.error("AI parse error from Claude:", parseError);
+        }
+      } catch (claudeError) {
+        console.error("Claude processing error, falling back to Gemini:", claudeError);
+      }
+    }
+
+    // Otherwise, or as fallback, use Gemini 3.5 Flash
+    console.log("[AI Engine] Using Gemini 3.5 Flash for intent extraction...");
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: "You are a precise data extractor. Always return only JSON matching the requested schema.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            intent: { type: Type.STRING },
+            name: { type: Type.STRING, nullable: true },
+            phone: { type: Type.STRING, nullable: true },
+            email: { type: Type.STRING, nullable: true },
+            vehicleInterest: { type: Type.STRING, nullable: true },
+            creditTier: { type: Type.STRING, nullable: true },
+            scoreInformado: { type: Type.STRING, nullable: true },
+            tienePronto: { type: Type.BOOLEAN, nullable: true },
+            cantidadPronto: { type: Type.STRING, nullable: true },
+            tieneTradeIn: { type: Type.BOOLEAN, nullable: true },
+            tradeAno: { type: Type.STRING, nullable: true },
+            tradeMarca: { type: Type.STRING, nullable: true },
+            tradeModelo: { type: Type.STRING, nullable: true },
+            estadoTrade: { type: Type.STRING, nullable: true },
+            agendoCita: { type: Type.BOOLEAN, nullable: true },
+            fechaCita: { type: Type.STRING, nullable: true },
+            wantsAppointment: { type: Type.BOOLEAN, nullable: true },
+            wantsFinancingInfo: { type: Type.BOOLEAN, nullable: true },
+            metodoPago: { type: Type.STRING, nullable: true },
+            confidence: { type: Type.NUMBER }
+          }
+        }
+      }
+    });
+
+    const text = response.text || "{}";
+    return JSON.parse(text) as AIResult;
+  } catch (error) {
+    console.error("AI processing error:", error);
+    return {
+      intent: "error",
+      confidence: 0
     };
-    return new Intl.DateTimeFormat("es-PR", options).format(new Date());
-  } catch {
-    return new Date().toLocaleString();
   }
 }
 
-function buildSystemPrompt(prTimeStr: string): string {
-  return `Eres Camilo, el asistente virtual experto en ventas de GT Auto Imports, en Dorado, Puerto Rico.
-Hablas SIEMPRE en español profesional pero cercano y humano. No uses negritas en markdown con demasiada frecuencia. Sé conciso y persuasivo.
-
-La hora y fecha actuales de Puerto Rico son: ${prTimeStr}.
-REGLA DE HORARIO CRÍTICA: Nunca sugieras ni confirmes una cita para hoy mismo ni para una hora ya pasada. Toda cita debe ofrecerse para el PRÓXIMO DÍA laborable o una fecha futura.
-
-=== CÓMO DECIDIR TU FASE ACTUAL (razónalo internamente, NUNCA lo muestres al usuario) ===
-Con base en TODO el historial de la conversación, determina:
-1. ¿El cliente ya mencionó o mostró interés en un vehículo específico del inventario?
-2. ¿Cuáles de estos datos YA se obtuvieron en la conversación?: nombre, teléfono o email, si tiene trade-in (sí/no), si tiene pronto pago (sí/no), nivel de crédito o puntuación aproximada (o "No sabe" si el cliente lo indicó).
-3. ¿El cliente indicó que pagará CASH/al contado, o que necesita financiamiento?
-
-Aplica EXACTAMENTE una de estas 4 fases:
-
-FASE 1 — DESCUBRIMIENTO (aún NO hay vehículo de interés identificado):
-- Tu único objetivo es identificar la necesidad del cliente (familia, trabajo, ahorro de gasolina, etc.) y proponer una solución del inventario.
-- NO hables de pre-cualificación, crédito, pronto pago, trade-in ni financiamiento.
-- NO envíes el enlace de pre-aprobación (https://gtautopr.com/pre-aprobacion/) todavía.
-- Si el cliente pregunta por financiamiento de entrada, dile amigablemente que con gusto lo ayudarás, pero primero necesitas entender qué vehículo o necesidad tiene.
-- NO uses el tag LEAD_DATA.
-
-FASE 2 — PRE-CUALIFICACIÓN (hay vehículo de interés, pero faltan datos):
-- Haz preguntas amigables y conversacionales para obtener SOLO los datos que faltan. No más de 1-2 preguntas por mensaje.
-- NUNCA ofrezcas una cita física todavía.
-- Si el cliente menciona financiamiento, puedes compartir: https://gtautopr.com/pre-aprobacion/. Si lo pide explícitamente, DEBES ofrecerle ese enlace y pedirle que lo vaya llenando mientras terminan de conversar.
-- NO uses el tag LEAD_DATA hasta que TODOS los campos estén completos.
-
-FASE 3 — FINANCIAMIENTO (todos los datos completos, el cliente NO paga cash):
-- DEBES ofrecer primero el enlace https://gtautopr.com/pre-aprobacion/ como paso obligatorio antes de cualquier cita física.
-- PROHIBIDO ofrecer o sugerir una cita física en este mensaje.
-- Incluye al final el tag LEAD_DATA (usa los datos reales, "" si no aplica):
-LEAD_DATA: {"nombre":"...","telefono":"...","email":"...","vehiculoInteres":"...","creditTier":"...","scoreInformado":"...","tienePronto":true|false,"cantidadPronto":"...","tieneTradeIn":true|false,"tradeAno":"...","tradeMarca":"...","tradeModelo":"...","estadoTrade":"...","agendo_cita":false,"fecha_cita":""}
-
-FASE 4 — CASH (todos los datos completos, el cliente SÍ paga cash):
-- Ofrece coordinar una cita física de inmediato, SIEMPRE para el próximo día laborable o fecha futura. Nunca hoy ni una hora ya pasada.
-- Menciona documentos requeridos: Licencia de conducir vigente, Seguro Social, comprobante de residencia reciente (agua o luz), comprobante de ingresos.
-- Incluye al final el tag LEAD_DATA (misma estructura) con "agendo_cita":true y "fecha_cita":"Próximo día laborable" (o la fecha acordada).
-
-=== FORMATO DE SALIDA ===
-- Si muestras un vehículo específico: MOSTRAR_VEHICULO: [Year] [Make] [Model]
-- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date]|[Notes]
-- Estos tags van al FINAL, en líneas separadas. El usuario nunca ve tu razonamiento de fases, solo tu respuesta + los tags que correspondan.
-
-Responde directamente al cliente como Camilo.`;
-}
-
-export async function processCamiloMessage(
+/**
+ * AI LAYER 3 (RESPONSE GENERATOR)
+ * ONLY generates text based on instructions from CRM
+ */
+export async function generateResponse(
   message: string,
+  crmDecision: any,
   context: AIContext
 ): Promise<string> {
-  const prTimeStr = getPRTime();
-  const systemPrompt = buildSystemPrompt(prTimeStr);
+  try {
+    const inventoryText = context.inventory
+      ?.slice(0, 50)
+      .map(v => `${v.year} ${v.make} ${v.model} $${v.price}`)
+      .join("\n");
 
-  const inventoryText = (context.inventory || [])
-    .slice(0, 50)
-    .map((v: any) => `${v.year} ${v.make} ${v.model} $${v.price}`)
-    .join("\n");
+    let historyLog = "";
+    if (context.history && context.history.length > 0) {
+      historyLog = context.history.map(m => `${m.role}: ${m.content}`).join("\n");
+    }
 
-  const historyLog = (context.history || [])
-    .map((m: any) => `${m.role}: ${m.content}`)
-    .join("\n");
+    let prTimeStr = "";
+    try {
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'America/Puerto_Rico',
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+      };
+      prTimeStr = new Intl.DateTimeFormat('es-PR', options).format(new Date());
+    } catch (e) {
+      prTimeStr = new Date().toLocaleString();
+    }
 
-  const userPrompt = `Historial de la conversación:
+    const prompt = `You are Camilo, an expert virtual assistant for GT Auto Imports in Dorado, Puerto Rico.
+You MUST speak in professional but friendly Spanish.
+Do NOT use markdown bolding too often. Keep your answers concise and highly persuasive.
+
+La hora y fecha actuales de Puerto Rico son: ${prTimeStr}.
+REGLA DE HORARIO CRÍTICA: Nunca sugieras o confirmes una cita para hoy mismo o para una hora en el pasado. Si vas a sugerir una cita, ofrécela para el PRÓXIMO DÍA laborable (mañana o los próximos días).
+REGLA DE VENTAS CRÍTICA: Tu objetivo principal como vendedor experto es SIEMPRE invitar de forma persuasiva y entusiasta al cliente al dealer. Ofrécele mencionar ofertas especiales, bonos, o facilidades para motivarlo a venir a verlo en persona, probarlo y enamorarse del vehículo para llevárselo a su casa.
+
+Here is the conversation history:
 ${historyLog}
 
-Inventario disponible:
+Here is the current inventory:
 ${inventoryText}
 
-Mensaje más reciente del cliente: "${message}"`;
+Here are the instructions from the Dealership CRM Engine about how you MUST reply to the user's latest message:
+${JSON.stringify(crmDecision, null, 2)}
 
-  try {
+User's latest message: "${message}"
+
+If the CRM instructed you to show a vehicle, you MUST include this exact string at the end of your message:
+MOSTRAR_VEHICULO: [Year] [Make] [Model]
+
+If the CRM instructed you to confirm an appointment, include:
+CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date]|[Notes]
+
+If the CRM instructed you to save lead data, include:
+LEAD_DATA: {"nombre": "...", "telefono": "...", "email": "..."}
+
+Respond directly to the user as Camilo.`;
+
+    // If Anthropic key is available, we can use Claude
     if (anthropic) {
-      console.log("[Camilo] Usando Claude (llamada única)...");
-      const msg = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }]
-      });
-      return msg.content[0].type === "text" ? msg.content[0].text : "";
-    }
-
-    if (gemini) {
-      console.log("[Camilo] Usando Gemini 2.5 Flash (Claude no configurado)...");
-      const response = await gemini.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: userPrompt,
-        config: { systemInstruction: systemPrompt }
-      });
-      return (
-        response.text ||
-        "Lo siento, estoy teniendo problemas de conexión. ¿Podrías intentar nuevamente?"
-      );
-    }
-
-    throw new Error(
-      "Ningún proveedor de IA configurado (falta ANTHROPIC_API_KEY y GEMINI_API_KEY)"
-    );
-  } catch (error: any) {
-    console.error("[Camilo] Error con Claude, intentando Gemini como fallback:", error);
-    if (gemini) {
       try {
-        const response = await gemini.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: userPrompt,
-          config: { systemInstruction: systemPrompt }
+        console.log("[AI Engine] Using Anthropic Claude for generating response...");
+        const msg = await anthropic.messages.create({
+          model: "claude-3-5-sonnet-20241022",
+          max_tokens: 1024,
+          temperature: 0.7,
+          system: "You are Camilo, a car sales assistant.",
+          messages: [
+            { role: "user", content: prompt }
+          ]
         });
-        return (
-          response.text ||
-          "Lo siento, estoy teniendo problemas de conexión. ¿Podrías intentar nuevamente?"
-        );
-      } catch (geminiError) {
-        console.error("[Camilo] Gemini también falló:", geminiError);
+        return msg.content[0].type === 'text' ? msg.content[0].text : '';
+      } catch (claudeError) {
+        console.error("Claude response generation error, falling back to Gemini:", claudeError);
       }
     }
-    const msg = error?.message || String(error);
+
+    // Otherwise, or as fallback, use Gemini 3.5 Flash
+    console.log("[AI Engine] Using Gemini 3.5 Flash for generating response...");
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: "You are Camilo, an expert virtual assistant for GT Auto Imports. Always respond in friendly, professional Spanish.",
+        temperature: 0.7
+      }
+    });
+
+    return response.text || "Lo siento, estoy teniendo problemas de conexión. ¿Podrías intentar nuevamente?";
+  } catch (error: any) {
+    console.error("AI response generation error:", error);
+    const msg = error.message || String(error);
     if (msg.includes("429") || msg.includes("quota")) {
-      return "Lo siento, el sistema está recibiendo demasiados mensajes y ha alcanzado su límite de cuota. Por favor, espera un minuto y vuelve a intentar.";
+      return "Lo siento, el sistema está recibiendo demasiados mensajes y ha alcanzado su límite de cuota gratuita con el proveedor de Inteligencia Artificial. Por favor, espera un minuto y vuelve a intentar.";
     }
-    return `Lo siento, estoy teniendo problemas de conexión. Por favor, intenta nuevamente más tarde.`;
+    return "Lo siento, estoy teniendo problemas de conexión. Por favor, intenta nuevamente más tarde.";
   }
 }

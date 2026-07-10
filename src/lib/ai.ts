@@ -1,7 +1,7 @@
 import { Vehicle } from "../types";
 
 export class DealerChat {
-  private history: any[] = [];
+  public history: any[] = [];
   private inventory: Vehicle[] = [];
 
   constructor(inventory: Vehicle[] = [], initialHistory: any[] = []) {
