@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  // ---- CAMBIAR SI CAMBIA LA URL DE CLOUD RUN O AL CONECTAR chat.gtautopr.com ----
+  // ---- CAMBIAR SI CAMBIA LA URL DE CLOUD RUN O AL CONECTAR livechat.gtautopr.com ----
   var APP_URL = "https://gt-auto-imports-ia-salesforce-124591220471.us-east1.run.app";
   var AUTO_OPEN_DELAY_MS = 8000;
   var SESSION_KEY = "dealeramigo_widget_dismissed";

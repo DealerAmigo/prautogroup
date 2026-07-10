@@ -48,6 +48,7 @@ export default function App() {
   const [selectedGalleryVehicle, setSelectedGalleryVehicle] = useState<Vehicle | null>(null);
   const [activeTab, setActiveTab] = useState<'chat' | 'inventory'>(() => {
     // Dentro del widget embebido (iframe en gtautopr.com) arranca en chat.
+    // Nota: el dominio público del widget será livechat.gtautopr.com
     // Si se visita la URL de Cloud Run directo, se mantiene el comportamiento original.
     try {
       return window.self !== window.top ? 'chat' : 'inventory';
@@ -129,6 +130,12 @@ export default function App() {
   
   const chatRef = useRef<any>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // Rastrea si ya se envió el evento "nuevo_lead" en esta conversación,
+  // para que el GAS no repita el email de "nuevo lead" en cada actualización.
+  const leadEventTypeRef = useRef<'nuevo_lead' | 'actualizacion'>('nuevo_lead');
+  // Timer de debounce: solo guardamos el lead 60s después de que el cliente
+  // deja de escribir, para no mandar data a medias en cada mensaje.
+  const leadSaveTimerRef = useRef<any>(null);
 
   const handleGalleryClick = (vehicle: Vehicle) => {
     setSelectedGalleryVehicle(vehicle);
@@ -185,17 +192,6 @@ export default function App() {
 
     setSelectedVehicle(vehicle || null);
     setSelectedImage(imageUrl);
-    
-    if (vehicle) {
-      // Track lead
-      saveLead({
-        type: 'image_click',
-        vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-        price: vehicle.price,
-        imageUrl: vehicle.image,
-        source: 'grid_click'
-      });
-    }
   };
 
   const loadInventory = async () => {
@@ -494,26 +490,40 @@ export default function App() {
             fecha_cita: appointmentDate,
             notas: appointmentNotes,
             type: 'ai_appointment_confirmation',
+            eventType: 'cita_confirmada',
             fullText: responseTextRaw,
             conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
           });
+          leadEventTypeRef.current = 'actualizacion';
         } catch (e) {
           console.error("Error parsing CITA_CONFIRMADA data:", e);
         }
       }
 
-      // 2. Process lead data capture (always post collected data)
+      // 2. Process lead data capture (debounced 60s tras el último mensaje)
       if (leadDataObj) {
         if (!botIntent) {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';
         }
-        saveLead({
-          ...leadDataObj,
-          type: 'ai_lead_capture',
-          fullText: responseTextRaw,
-          conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
-        });
+        const eventTypeAtCapture = leadEventTypeRef.current;
+        const historySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
+
+        if (leadSaveTimerRef.current) {
+          clearTimeout(leadSaveTimerRef.current);
+        }
+        leadSaveTimerRef.current = setTimeout(() => {
+          saveLead({
+            ...leadDataObj,
+            type: 'ai_lead_capture',
+            eventType: eventTypeAtCapture,
+            fullText: responseTextRaw,
+            conversationHistory: historySnapshot
+          });
+          leadSaveTimerRef.current = null;
+        }, 60000);
+
+        leadEventTypeRef.current = 'actualizacion';
       }
 
       // 3. Process show vehicle request
@@ -1089,7 +1099,7 @@ export default function App() {
           <aside 
             key="chat-sidebar"
             className={cn(
-              "w-full md:w-[450px] lg:w-[540px] border-r border-zinc-900 bg-black flex flex-col relative transition-all duration-500 ease-in-out",
+              "w-full md:w-[350px] lg:w-[400px] border-r border-zinc-900 bg-black flex flex-col relative transition-all duration-500 ease-in-out",
               activeTab === 'inventory' ? "hidden md:flex" : "flex"
             )}
           >
@@ -1570,17 +1580,6 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
                     onClick={() => {
                       const v = message.vehicles?.find(veh => veh.image === src || veh.model === alt);
                       onImageClick?.(src || '', v);
-                      // Track interest on image click
-                      import('./lib/leads').then(({ saveLead }) => {
-                        if (saveLead) {
-                          saveLead({
-                            type: 'image_interaction',
-                            imageUrl: src,
-                            vehicle: alt,
-                            timestamp: Date.now()
-                          });
-                        }
-                      });
                     }}
                   >
                     <span className="relative block aspect-[16/9] bg-[#1a1a1a]">

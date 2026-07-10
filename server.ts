@@ -1,10 +1,8 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
-import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
-import { processAI, generateResponse } from "./ai/ai";
-import { CRMEngine } from "./core/crmEngine";
+import { processCamiloMessage } from "./ai/ai";
 
 async function startServer() {
   const app = express();
@@ -52,44 +50,16 @@ async function startServer() {
       }
 
       /**
-       * 1. AI INTERPRETATION LAYER
-       * SOLO entiende intención, NO ejecuta nada
+       * LLAMADA ÚNICA A CAMILO (Claude, con Gemini como fallback)
+       * Extrae datos, decide la fase y genera la respuesta en una sola pasada.
        */
-      const aiResult = await processAI(message, {
+      const responseText = await processCamiloMessage(message, {
         inventory,
         history
       });
 
-      /**
-       * 2. CRM DECISION LAYER (NUEVO CEREBRO REAL)
-       */
-      const crmDecision = await CRMEngine.handle("MESSAGE_RECEIVED", {
-        leadId: aiResult.leadId || crypto.randomUUID(),
-        name: aiResult.name,
-        phone: aiResult.phone,
-        email: aiResult.email,
-        message,
-        vehicleInterest: aiResult.vehicleInterest,
-        creditTier: aiResult.creditTier,
-        source: "web_chat",
-        raw: aiResult
-      });
-
-      /**
-       * 3. RESPONSE GENERATION
-       * El AI genera la respuesta final basada en las instrucciones del CRM
-       */
-      const responseText = await generateResponse(message, crmDecision, {
-        inventory,
-        history
-      });
-
-      /**
-       * 4. RESPONSE TO FRONTEND (CLEAN)
-       */
       return res.json({
-        text: responseText,
-        crm: crmDecision
+        text: responseText
       });
     } catch (error: any) {
       console.error("Chat error:", error);
@@ -135,7 +105,10 @@ async function startServer() {
         fuente: lead.source || lead.fuente || "web_chat",
         agendo_cita: lead.agendo_cita || (lead.fecha_cita ? true : false) || false,
         fecha_cita: lead.fecha_cita || lead.appointmentDate || "",
-        notas: lead.notas || lead.notes || lead.content || lead.type || ""
+        notas: lead.notas || lead.notes || lead.content || "",
+        eventType: lead.eventType || "nuevo_lead",
+        metodoPago: lead.metodoPago || "",
+        conversationHistory: lead.conversationHistory || []
       };
 
       console.log("Sending lead to Google Apps Script...");
