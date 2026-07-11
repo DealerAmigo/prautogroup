@@ -491,7 +491,7 @@ export default function App() {
             notas: appointmentNotes,
             type: 'ai_appointment_confirmation',
             eventType: 'cita_confirmada',
-            fullText: responseTextRaw,
+            fullText: responseText,
             conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
           });
           leadEventTypeRef.current = 'actualizacion';
@@ -517,7 +517,7 @@ export default function App() {
             ...leadDataObj,
             type: 'ai_lead_capture',
             eventType: eventTypeAtCapture,
-            fullText: responseTextRaw,
+            fullText: responseText,
             conversationHistory: historySnapshot
           });
           leadSaveTimerRef.current = null;
@@ -1558,16 +1558,29 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "flex flex-col gap-2 w-full",
-        isBot ? "items-start" : "items-end"
+        "flex w-full gap-2 md:gap-3",
+        isBot ? "flex-row" : "flex-row-reverse"
       )}
     >
+      {isBot && (
+        <div className="shrink-0 mt-1 md:mt-2">
+          <div className="relative">
+            <img src="/camilo.jpg" alt="Camilo" className="w-8 h-8 rounded-full object-cover border border-white/10 shadow-lg" />
+            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-black shadow-[0_0_5px_#10b981]" />
+          </div>
+        </div>
+      )}
+      
       <div className={cn(
-        "max-w-[85%] px-6 py-5 rounded-3xl relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-3xl border transition-all duration-300",
-        isBot 
-          ? "bg-white/[0.03] border-white/[0.08] rounded-tl-none text-slate-100" 
-          : "bg-sky-500 border-sky-400 rounded-tr-none text-white shadow-[0_10px_20px_rgba(14,165,233,0.2)]"
+        "flex flex-col gap-2 max-w-[85%]",
+        isBot ? "items-start" : "items-end"
       )}>
+        <div className={cn(
+          "px-6 py-5 rounded-3xl relative shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-3xl border transition-all duration-300",
+          isBot 
+            ? "bg-white/[0.03] border-white/[0.08] rounded-tl-none text-slate-100" 
+            : "bg-sky-500 border-sky-400 rounded-tr-none text-white shadow-[0_10px_20px_rgba(14,165,233,0.2)]"
+        )}>
         {cleanContent && (
           <div className={cn(
             "markdown-body leading-relaxed font-round text-lg md:text-xl font-medium"
@@ -1732,7 +1745,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
         </div>
       )}
 
-
+      </div>
     </motion.div>
   );
 }
