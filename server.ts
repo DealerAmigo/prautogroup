@@ -3,11 +3,24 @@ import cors from "cors";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { processCamiloMessage } from "./ai/ai";
+import twilioAgentRouter from "./twilioAgent";
 
 async function startServer() {
   const app = express();
   app.use(cors());
   app.use(express.json());
+  // Twilio manda sus webhooks (voice/SMS) como application/x-www-form-urlencoded,
+  // no JSON -- necesario para que req.body funcione en /api/twilio/*.
+  app.use(express.urlencoded({ extended: false }));
+
+  /**
+   * AGENTE DE RECEPCIÓN (Twilio) -- missed-call text-back + SMS
+   * Mismo motor de Camilo (ai/ai.ts), mismo saveLead hacia GAS.
+   * Configurar en la consola de Twilio cuando se compre el número:
+   *   Voice webhook     -> POST {dominio}/api/twilio/voice-missed
+   *   Messaging webhook -> POST {dominio}/api/twilio/sms
+   */
+  app.use("/api/twilio", twilioAgentRouter);
 
   /**
    * HEALTH CHECK
@@ -108,6 +121,7 @@ async function startServer() {
         notas: lead.notas || lead.notes || lead.content || "",
         eventType: lead.eventType || "nuevo_lead",
         metodoPago: lead.metodoPago || "",
+        handoffUrgente: lead.handoffUrgente || false,
         conversationHistory: lead.conversationHistory || []
       };
 
