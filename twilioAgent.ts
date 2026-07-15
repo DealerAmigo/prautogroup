@@ -293,7 +293,15 @@ router.post("/sms", async (req, res) => {
     const inventory = await fetchInventory();
 
     const rawResponse = await processCamiloMessage(body, { inventory, history });
-    const { text, leadData, citaConfirmada, handoffUrgente } = extractTags(rawResponse);
+    let { text, leadData, citaConfirmada, handoffUrgente } = extractTags(rawResponse);
+
+    // Si despues de limpiar los tags no queda texto visible, Camilo
+    // respondio solo con metadata (LEAD_DATA, etc.) sin nada conversacional.
+    // Nunca mandamos un SMS vacio -- usamos un mensaje de respaldo.
+    if (!text || !text.trim()) {
+      text = "Disculpe, ¿me puede repetir o darme más detalles de lo que busca?";
+      console.error("[TwilioAgent] Respuesta de Claude vino vacia tras limpiar tags. Raw:", rawResponse);
+    }
 
     history.push({ role: "user", content: body });
     history.push({ role: "assistant", content: text });
