@@ -209,15 +209,10 @@ router.post("/voice-missed", async (req, res) => {
   const from = String(req.body.From || "");
   console.log("[TwilioAgent] Llamada perdida reenviada desde:", from);
 
-  res.type("text/xml");
-  res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say language="es-MX">Gracias por llamar a G T Auto Imports. En un momento le enviamos un mensaje de texto para ayudarle.</Say>
-  <Hangup/>
-</Response>`);
-
-  // Arranca la conversacion por SMS -- mensaje fijo (no generado por IA)
-  // para que la primera respuesta sea instantanea y predecible.
+  // IMPORTANTE: el envio del SMS va ANTES de res.send(). Cloud Run puede
+  // reducir el CPU del contenedor a casi cero apenas se responde la peticion
+  // HTTP, asi que cualquier trabajo async despues de res.send() puede quedar
+  // a medias y nunca completar. Por eso esperamos a que el SMS salga primero.
   if (from) {
     const welcomeMsg =
       "Hola, soy Camilo de GT Auto Imports 🚗 Vi que nos llamó y no pudimos contestar, disculpe la espera. ¿Qué tipo de vehículo está buscando?";
@@ -237,6 +232,7 @@ router.post("/voice-missed", async (req, res) => {
           from: twilioNumber,
           to: from
         });
+        console.log("[TwilioAgent] SMS de bienvenida enviado a:", from);
       } catch (err) {
         console.error("[TwilioAgent] Error enviando SMS de bienvenida:", err);
       }
@@ -244,6 +240,16 @@ router.post("/voice-missed", async (req, res) => {
       console.error("[TwilioAgent] Faltan TWILIO_ACCOUNT_SID/AUTH_TOKEN/PHONE_NUMBER en env.");
     }
   }
+
+  // TwiML se responde AL FINAL, una vez el SMS ya se intento enviar --
+  // esto garantiza que Cloud Run mantenga el CPU activo hasta que termine
+  // ese trabajo, en vez de arriesgarnos a que quede a medias.
+  res.type("text/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say language="es-MX">Gracias por llamar a G T Auto Imports. En un momento le enviamos un mensaje de texto para ayudarle.</Say>
+  <Hangup/>
+</Response>`);
 });
 
 // ==========================================================
