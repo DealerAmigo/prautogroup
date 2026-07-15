@@ -199,6 +199,28 @@ function xmlEscape(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// ----------------------------------------------------------
+// Log de auditoria (pregunta + respuesta), un turno por fila, en la
+// pestaña GT_Auto_Imports_Chat_Logs -- mismo mecanismo que ya usa
+// /api/chat en server.ts para el widget web. Compartido aqui para
+// no duplicar el fetch en cada canal.
+// ----------------------------------------------------------
+async function logChatTurn(userMessage: string, botReply: string): Promise<void> {
+  const leadsScriptUrl = process.env.LEADS_SCRIPT_URL;
+  if (!leadsScriptUrl) return;
+  const proxyKey = process.env.PROXY_KEY || process.env.APPS_SCRIPT_TOKEN || "test_token";
+
+  try {
+    await fetch(leadsScriptUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logChat", _token: proxyKey, proxyKey, userMessage, botReply })
+    });
+  } catch (err) {
+    console.error("[TwilioAgent] Error guardando chat log de auditoria:", err);
+  }
+}
+
 // ==========================================================
 // POST /api/twilio/voice-missed
 // El carrier del dealer reenvia aqui la llamada cuando no contesta
@@ -296,6 +318,10 @@ router.post("/sms", async (req, res) => {
         conversationHistory: history
       });
     }
+
+    // Log de auditoria del turno -- antes de responder, mismo motivo que
+    // siempre: Cloud Run puede congelar el CPU apenas se envia la respuesta.
+    await logChatTurn(body, text);
 
     res.type("text/xml");
     res.send(`<?xml version="1.0" encoding="UTF-8"?>

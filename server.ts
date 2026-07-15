@@ -71,6 +71,31 @@ async function startServer() {
         history
       });
 
+      // Log de auditoria (pregunta + respuesta) hacia GAS -- se espera a que
+      // termine ANTES de responder al cliente, por la misma razon que en
+      // twilioAgent.ts: Cloud Run puede congelar el CPU del contenedor apenas
+      // se envia la respuesta HTTP, y un log "fire and forget" despues de
+      // res.json() se podria perder silenciosamente.
+      const leadsScriptUrl = process.env.LEADS_SCRIPT_URL;
+      if (leadsScriptUrl) {
+        const proxyKey = process.env.PROXY_KEY || process.env.APPS_SCRIPT_TOKEN || "test_token";
+        try {
+          await fetch(leadsScriptUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "logChat",
+              _token: proxyKey,
+              proxyKey,
+              userMessage: message,
+              botReply: responseText
+            })
+          });
+        } catch (logErr) {
+          console.error("Error guardando chat log de auditoria:", logErr);
+        }
+      }
+
       return res.json({
         text: responseText
       });
