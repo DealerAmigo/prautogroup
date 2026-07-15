@@ -161,7 +161,16 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    // widget-loader.js se sirve con URL fija (nunca cambia de nombre entre
+  // deploys) -- sin esto, los navegadores lo cachean con heuristica propia
+  // y pueden quedarse con una version vieja por dias aunque el servidor ya
+  // tenga la nueva. Los demas assets estaticos (camilo.jpg, bundle de React
+  // con hash en el nombre) SI pueden cachear normal, no llevan este header.
+  app.get("/widget-loader.js", (req, res, next) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    next();
+  });
+  app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
