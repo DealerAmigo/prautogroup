@@ -137,6 +137,14 @@ export default function App() {
   // deja de escribir, para no mandar data a medias en cada mensaje.
   const leadSaveTimerRef = useRef<any>(null);
 
+  // ---- Re-enganche por inactividad ----
+  // "Mini cache" en memoria (se borra solo con refresh, tal como se pidió) --
+  // pool de 3 preguntas frescas que Camilo genera en CADA respuesta real (sin
+  // llamada extra a Claude), listas para usarse si el cliente se queda callado.
+  const [nudgePool, setNudgePool] = useState<string[]>([]);
+  const idleTimerRef = useRef<any>(null);
+  const IDLE_NUDGE_MS = 10000;
+
   const handleGalleryClick = (vehicle: Vehicle) => {
     setSelectedGalleryVehicle(vehicle);
     setActiveImageIndex(0);
@@ -347,9 +355,46 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [messages, isTyping]);
 
+  // Dispara el siguiente nudge del pool si el cliente sigue callado. Si
+  // quedan más nudges en el pool, se re-arma para seguir cada 10s hasta
+  // que se agoten o el cliente responda (lo cual limpia el timer).
+  function armIdleTimer() {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      setNudgePool(prevPool => {
+        if (prevPool.length === 0) return prevPool;
+        const [nextNudge, ...rest] = prevPool;
+        const nudgeMsg: ChatMessage = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: nextNudge,
+          timestamp: Date.now(),
+        };
+        setMessages(prev => [...prev, nudgeMsg]);
+        if (chatRef.current) {
+          chatRef.current.history.push({ role: 'model', parts: [{ text: nextNudge }] });
+        }
+        if (rest.length > 0) armIdleTimer();
+        return rest;
+      });
+    }, IDLE_NUDGE_MS);
+  }
+
+  function clearIdleTimer() {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => clearIdleTimer();
+  }, []);
+
   async function handleSend(manualMessage?: string) {
     const textToSubmit = manualMessage || inputText;
     if (!textToSubmit.trim() || isTyping || !chatRef.current) return;
+    clearIdleTimer(); // el cliente sí respondió -- cancela cualquier nudge pendiente
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -444,6 +489,21 @@ export default function App() {
         responseText = responseText.replace(/CITA_CONFIRMADA:.*$/m, '').replace(/CITA_CONFIRMADA:.*/s, '').trim();
       }
       
+      // Extract HANDOFF_URGENTE (nunca debe mostrarse crudo al cliente):
+      const handoffMatch = responseText.match(/HANDOFF_URGENTE:\s*(Si|Sí|true)/i);
+      const handoffUrgente = !!handoffMatch;
+      if (handoffMatch) {
+        responseText = responseText.replace(/HANDOFF_URGENTE:.*$/m, '').trim();
+      }
+
+      // Extract NUDGES (pool de re-enganche por inactividad, nunca visible):
+      let freshNudges: string[] = [];
+      const nudgesMatch = responseText.match(/NUDGES:\s*(.+)$/m);
+      if (nudgesMatch) {
+        freshNudges = nudgesMatch[1].split('|').map(n => n.trim()).filter(Boolean);
+        responseText = responseText.replace(/NUDGES:.*$/m, '').trim();
+      }
+
       // Extract LEAD_DATA:
       let leadDataObj: any = null;
       const leadMatch = responseText.match(/LEAD_DATA:\s*(\{.*\})/s);
@@ -546,7 +606,7 @@ export default function App() {
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: responseText || (vehiclesToShow.length > 0 ? '¡Excelente! Aquí tienes la unidad disponible:' : 'Entendido. ¿En qué más puedo ayudarte?'),
+        content: responseText || (vehiclesToShow.length > 0 ? '¡Excelente! Aquí tienes la unidad disponible:' : '¿Le gustaría que coordinemos una prueba de manejo para que lo vea en persona?'),
         timestamp: Date.now(),
         intent: botIntent,
         appointmentConfirmed: appointmentConfirmed,
@@ -554,6 +614,12 @@ export default function App() {
       };
 
       setMessages(prev => [...prev, botMsg]);
+
+      // Refresca el pool con las variaciones nuevas de este turno y arma
+      // el timer de inactividad -- si el cliente se queda callado 10s,
+      // dispara la primera sin llamar a Claude de nuevo.
+      setNudgePool(freshNudges);
+      if (freshNudges.length > 0) armIdleTimer();
     } catch (error: any) {
       console.error("Gemini Error:", error);
       const errorMessage = error?.message || "Lo siento, tuve un pequeño inconveniente.";
@@ -813,17 +879,7 @@ export default function App() {
                   <button 
                     onClick={() => {
                       if (selectedVehicle) {
-                        const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}**. ¿En qué te puedo ayudar? Puedo darte más detalles sobre el motor, transmisión, opciones de financiamiento o coordinar una cita.`;
-                        const newAssistantMessage = {
-                          id: Date.now().toString(),
-                          role: 'assistant' as const,
-                          content: msgText,
-                          timestamp: Date.now()
-                        };
-                        setMessages(prev => [...prev, newAssistantMessage]);
-                        if (chatRef.current) {
-                          chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
-                        }
+                        handleSend(`Me interesa el ${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}, cuéntame más.`);
                         setSelectedImage(null);
                         setSelectedVehicle(null);
                         setActiveTab('chat');
@@ -855,17 +911,7 @@ export default function App() {
                   <button 
                     onClick={() => {
                       if (selectedVehicle) {
-                        const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}** y en sus opciones de financiamiento. ¿Te gustaría pre-cualificar sin indagación de crédito o tienes alguna duda sobre el proceso?`;
-                        const newAssistantMessage = {
-                          id: Date.now().toString(),
-                          role: 'assistant' as const,
-                          content: msgText,
-                          timestamp: Date.now()
-                        };
-                        setMessages(prev => [...prev, newAssistantMessage]);
-                        if (chatRef.current) {
-                          chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
-                        }
+                        handleSend(`Me interesa el ${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model} y sus opciones de financiamiento.`);
                         setSelectedImage(null);
                         setSelectedVehicle(null);
                         setActiveTab('chat');
@@ -1389,31 +1435,11 @@ export default function App() {
                     onImageClick={handleImageClick} 
                     onGalleryClick={handleGalleryClick}
                     onChatClick={(vehicle) => {
-                      const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${vehicle.year} ${vehicle.make} ${vehicle.model}**. ¿En qué te puedo ayudar? Puedo darte más detalles sobre el motor, transmisión, opciones de financiamiento o coordinar una cita.`;
-                      const newAssistantMessage = {
-                        id: Date.now().toString(),
-                        role: 'assistant' as const,
-                        content: msgText,
-                        timestamp: Date.now()
-                      };
-                      setMessages(prev => [...prev, newAssistantMessage]);
-                      if (chatRef.current) {
-                        chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
-                      }
+                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model}, cuéntame más.`);
                       setActiveTab('chat');
                     }}
                     onFinanceClick={(vehicle, estimatedPayment) => {
-                      const msgText = `¡Hola! Soy Camilo, tu asesor virtual de GT Auto Imports. Veo que estás interesado en el **${vehicle.year} ${vehicle.make} ${vehicle.model}** y sus opciones de financiamiento (estimado ${estimatedPayment}/mo). ¿Te gustaría pre-cualificar sin indagación de crédito o tienes alguna duda sobre el proceso?`;
-                      const newAssistantMessage = {
-                        id: Date.now().toString(),
-                        role: 'assistant' as const,
-                        content: msgText,
-                        timestamp: Date.now()
-                      };
-                      setMessages(prev => [...prev, newAssistantMessage]);
-                      if (chatRef.current) {
-                        chatRef.current.history.push({ role: 'model', parts: [{ text: msgText }] });
-                      }
+                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} y sus opciones de financiamiento (estimado ${estimatedPayment}/mo).`);
                       setActiveTab('chat');
                     }}
                   />
