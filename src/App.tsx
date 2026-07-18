@@ -143,7 +143,7 @@ export default function App() {
   // llamada extra a Claude), listas para usarse si el cliente se queda callado.
   const [nudgePool, setNudgePool] = useState<string[]>([]);
   const idleTimerRef = useRef<any>(null);
-  const IDLE_NUDGE_MS = 10000;
+  const IDLE_NUDGE_MS = 25000;
 
   const handleGalleryClick = (vehicle: Vehicle) => {
     setSelectedGalleryVehicle(vehicle);
@@ -355,9 +355,11 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [messages, isTyping]);
 
-  // Dispara el siguiente nudge del pool si el cliente sigue callado. Si
-  // quedan más nudges en el pool, se re-arma para seguir cada 10s hasta
-  // que se agoten o el cliente responda (lo cual limpia el timer).
+  // Dispara UN SOLO nudge del pool si el cliente sigue callado 25s. NO se
+  // encadena solo -- si el cliente sigue sin responder después de este,
+  // no le cae otro encima; solo se vuelve a armar cuando haya un mensaje
+  // real nuevo (ver handleSend). Esto evita que se sienta como que el bot
+  // "no da break" y le manda varios mensajes seguidos sin esperar respuesta.
   function armIdleTimer() {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     idleTimerRef.current = setTimeout(() => {
@@ -374,7 +376,6 @@ export default function App() {
         if (chatRef.current) {
           chatRef.current.history.push({ role: 'model', parts: [{ text: nextNudge }] });
         }
-        if (rest.length > 0) armIdleTimer();
         return rest;
       });
     }, IDLE_NUDGE_MS);
