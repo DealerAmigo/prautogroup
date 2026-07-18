@@ -1,5 +1,19 @@
 import { Vehicle } from "../types";
 
+// Limpia todos los tags conocidos antes de guardar en el historial -- Claude
+// NUNCA debe ver su propio LEAD_DATA/CITA_CONFIRMADA/HANDOFF_URGENTE/NUDGES
+// crudo como si fuera parte de la conversación real. Esto es justo lo que
+// estaba envenenando el contexto en conversaciones largas.
+function stripTagsForHistory(raw: string): string {
+  return raw
+    .replace(/CITA_CONFIRMADA:.*$/gm, "")
+    .replace(/HANDOFF_URGENTE:.*$/gm, "")
+    .replace(/NUDGES:.*$/gm, "")
+    .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
+    .replace(/LEAD_DATA:\s*\{.*\}/gs, "")
+    .trim();
+}
+
 export class DealerChat {
   public history: any[] = [];
   private inventory: Vehicle[] = [];
@@ -47,11 +61,13 @@ export class DealerChat {
       const data = await response.json();
       const responseText = data.text || "";
       
-      // Actualizar historial local para la UI
+      // Actualizar historial local para la UI -- guardamos el texto YA
+      // LIMPIO de tags, nunca el crudo, para no envenenar el contexto que
+      // se le manda a Claude en los proximos turnos.
       if (message) {
         this.history.push({ role: "user", parts: [{ text: message }] });
       }
-      this.history.push({ role: "model", parts: [{ text: responseText }] });
+      this.history.push({ role: "model", parts: [{ text: stripTagsForHistory(responseText) }] });
 
       return {
         response: {
