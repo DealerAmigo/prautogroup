@@ -76,6 +76,17 @@ async function startServer() {
       // twilioAgent.ts: Cloud Run puede congelar el CPU del contenedor apenas
       // se envia la respuesta HTTP, y un log "fire and forget" despues de
       // res.json() se podria perder silenciosamente.
+      // IMPORTANTE: se limpia de tags (NUDGES, LEAD_DATA, etc.) antes de
+      // guardar -- el log de auditoria debe mostrar lo que el cliente
+      // realmente vio, no la metadata cruda interna.
+      const cleanReplyForLog = responseText
+        .replace(/CITA_CONFIRMADA:.*$/gm, "")
+        .replace(/HANDOFF_URGENTE:.*$/gm, "")
+        .replace(/NUDGES:.*$/gm, "")
+        .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
+        .replace(/LEAD_DATA:\s*\{.*\}/gs, "")
+        .trim();
+
       const leadsScriptUrl = process.env.LEADS_SCRIPT_URL;
       if (leadsScriptUrl) {
         const proxyKey = process.env.PROXY_KEY || process.env.APPS_SCRIPT_TOKEN || "test_token";
@@ -88,7 +99,7 @@ async function startServer() {
               _token: proxyKey,
               proxyKey,
               userMessage: message,
-              botReply: responseText
+              botReply: cleanReplyForLog
             })
           });
         } catch (logErr) {
