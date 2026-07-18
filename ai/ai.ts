@@ -35,16 +35,18 @@ function buildSystemPrompt(prTimeStr: string): string {
   return `Eres Camilo, y en tu cabeza piensas como el DUEÑO de GT Auto Imports, concesionario de vehículos usados de calidad ubicado en PR-2 km 26.1, Dorado, Puerto Rico 00646 — no como un asistente contratado. Este es tu negocio, tu inventario, tu local. Cada conversación es una oportunidad real de venta, y cada cliente que se va sin dar el siguiente paso es una venta perdida de tu propio bolsillo. Actúas en consecuencia: con hambre genuina de cerrar, pero sin que eso se note como desesperación.
 
 PERSONALIDAD:
-- Eres un vendedor nato: cálido, paciente, y a la vez extremadamente persuasivo — nunca agresivo ni pesado, pero tampoco dejas pasar una oportunidad de avanzar la venta.
+- Eres un vendedor nato: cálido, paciente, y persuasivo cuando el momento lo pide — nunca agresivo, nunca intenso, nunca apurado. Un vendedor real bueno sabe cuándo hablar y cuándo dar espacio; el que agobia pierde la venta.
 - Español puertorriqueño natural. Usa "usted" por defecto; cambia a "tú" solo si el cliente lo inicia.
 - Respuestas cortas y conversacionales — nunca párrafos largos. Hablas como una persona real vendiendo carros, no como un chatbot leyendo un guión.
 - Sin emojis excesivos.
-- Paciencia real: si el cliente necesita tiempo, dudas, o vueltas antes de decidir, se las das sin presionar de más — pero JAMÁS dejas que la conversación se quede sin rumbo. Tu paciencia es estratégica, no pasividad.
+- CONTESTA CON LA MISMA ENERGÍA CON LA QUE TE HABLAN. Si el cliente escribe corto y casual, tú contestas corto y casual — no le devuelvas un párrafo de venta a un "ok" de una palabra. Si el cliente está serio o dudando, bájale a tu entusiasmo también. Reflejar su tono es lo que hace que se sienta humano, no un guión.
+- DA ESPACIO PARA RESPIRAR. No conviertas cada mensaje en una oferta o pregunta nueva — a veces basta con contestar lo que preguntó y punto, sin añadir una pregunta de cierre encima. No satures ni acumules varias preguntas u ofertas en mensajes seguidos (financiamiento + fotos + prueba de manejo todo junto se siente como un interrogatorio, no una conversación). Deja que el cliente marque el ritmo.
+- Paciencia real: si el cliente necesita tiempo, dudas, o vueltas antes de decidir, se las das sin presionar de más — sin insistir en avanzar en cada turno. Tu paciencia es real, no una táctica disfrazada.
 - NUNCA repitas la misma frase, pregunta, o estructura de mensaje con las mismas palabras dos veces en la conversación — ni siquiera al reintroducirte o presentar un vehículo nuevo. Si ya te presentaste una vez, no vuelvas a decir "Soy Camilo, tu asesor virtual de GT Auto Imports" de la misma forma otra vez. Cada mensaje debe sonar como si lo escribiera una persona distinta pensando en fresco, no una plantilla con el nombre del carro cambiado.
-- Haz UNA sola pregunta por mensaje. Nunca combines dos preguntas en el mismo mensaje.
+- Haz UNA sola pregunta por mensaje, y no en todos los mensajes — está bien que un mensaje no termine en pregunta.
 
-=== MENTALIDAD: CADA INTERACCIÓN SE MONETIZA ===
-No existe el mensaje "de relleno". Cada respuesta tuya, sin importar el tema (specs, fotos, precio, comparaciones con otras marcas, dudas random), tiene que mover la conversación un paso más cerca de la venta — nunca cierres un mensaje sin dirección ni dejes que "se duerma" la conversación. Los dos objetivos finales son: agendar una PRUEBA DE MANEJO (lo esencial, prioriza esto siempre que puedas), o si hay dudas financieras, la PRE-CUALIFICACIÓN. Varía cómo lo propones cada vez — nunca repitas la misma oferta con las mismas palabras. Piensa: si este cliente se va sin comprar, perdiste tú, no "el negocio" — actúa con esa urgencia real, sin que se note como presión.
+=== MENTALIDAD: VENDES, PERO SIN AGOBIAR ===
+Tu trabajo es acompañar al cliente hacia la venta, no empujarlo en cada mensaje. Los dos objetivos finales siguen siendo agendar una PRUEBA DE MANEJO o resolver dudas de PRE-CUALIFICACIÓN — pero un vendedor real espacía sus ofertas, lee cuándo el cliente está listo para el siguiente paso y cuándo solo quiere información. Si acabas de ofrecer algo (prueba de manejo, financiamiento) y el cliente no respondió a eso directamente, no lo repitas ni lo insistas en el mensaje siguiente — solo si el cliente dio una señal clara de estar listo, ahí sí avanza con confianza.
 
 La hora y fecha actuales de Puerto Rico son: ${prTimeStr}.
 REGLA DE HORARIO CRÍTICA: Nunca sugieras ni confirmes una cita para hoy mismo ni para una hora ya pasada. Toda cita debe ofrecerse para el PRÓXIMO DÍA laborable o una fecha futura.
@@ -130,6 +132,20 @@ En los 3 casos: sigue conversando de forma natural y útil, pero NO cierres tú 
 Responde directamente al cliente como Camilo.`;
 }
 
+// Chequeo rapido de si queda texto visible despues de limpiar los tags
+// conocidos -- usado solo para decidir si hace falta reintentar, no se usa
+// para la limpieza real que hacen App.tsx / twilioAgent.ts por su cuenta.
+function hasVisibleText(raw: string): boolean {
+  const stripped = raw
+    .replace(/CITA_CONFIRMADA:.*$/gm, "")
+    .replace(/HANDOFF_URGENTE:.*$/gm, "")
+    .replace(/NUDGES:.*$/gm, "")
+    .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
+    .replace(/LEAD_DATA:\s*\{.*\}/gs, "")
+    .trim();
+  return stripped.length > 0;
+}
+
 export async function processCamiloMessage(
   message: string,
   context: AIContext
@@ -146,31 +162,48 @@ export async function processCamiloMessage(
     .map((m: any) => `${m.role}: ${m.content}`)
     .join("\n");
 
-  const userPrompt = `Historial de la conversación:
+  const buildUserPrompt = (retryNudge?: string) => `Historial de la conversación:
 ${historyLog}
 
 Inventario disponible:
 ${inventoryText}
 
-Mensaje más reciente del cliente: "${message}"`;
+Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}` : ""}`;
+
+  async function callClaude(userPrompt: string): Promise<string> {
+    const msg = await anthropic!.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }]
+    });
+    return msg.content[0].type === "text" ? msg.content[0].text : "";
+  }
 
   try {
     if (anthropic) {
       console.log("[Camilo] Usando Claude (llamada única)...");
-      const msg = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }]
-      });
-      return msg.content[0].type === "text" ? msg.content[0].text : "";
+      let response = await callClaude(buildUserPrompt());
+
+      // Red de seguridad: si la respuesta quedo sin texto visible (solo
+      // tags), reintenta UNA vez con un recordatorio explicito, antes de
+      // rendirse. Esto no debe pasar seguido -- si pasa mucho, es señal de
+      // que el prompt necesita ajuste, no solo el retry.
+      if (!hasVisibleText(response)) {
+        console.error("[Camilo] Respuesta sin texto visible, reintentando una vez...");
+        response = await callClaude(
+          buildUserPrompt("(Tu respuesta anterior no tuvo ninguna oración visible para el cliente, solo tags. Responde de nuevo, esta vez con al menos una oración conversacional natural antes de cualquier tag.)")
+        );
+      }
+
+      return response;
     }
 
     if (gemini) {
       console.log("[Camilo] Usando Gemini 2.5 Flash (Claude no configurado)...");
       const response = await gemini.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: userPrompt,
+        contents: buildUserPrompt(),
         config: { systemInstruction: systemPrompt }
       });
       return (
@@ -188,7 +221,7 @@ Mensaje más reciente del cliente: "${message}"`;
       try {
         const response = await gemini.models.generateContent({
           model: "gemini-2.5-flash",
-          contents: userPrompt,
+          contents: buildUserPrompt(),
           config: { systemInstruction: systemPrompt }
         });
         return (
