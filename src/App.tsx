@@ -567,7 +567,7 @@ export default function App() {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';
         }
-        const eventTypeAtCapture = leadEventTypeRef.current;
+        const eventTypeAtCapture = leadDataObj.eventType || leadEventTypeRef.current;
         const historySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
 
         if (leadSaveTimerRef.current) {
