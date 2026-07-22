@@ -188,6 +188,30 @@ async function startServer() {
     }
   });
 
+  /**
+   * PÁGINAS LEGALES (Términos y Privacidad) -- rutas explícitas y directas.
+   * Se registran ANTES del middleware de Vite/catch-all de la SPA para
+   * garantizar que /terminos-y-condiciones.html y /privacy-policy.html
+   * siempre respondan como página HTML normal -- sin login, sin sesión de
+   * chat, accesibles por cualquiera con el link. Esto es requisito para el
+   * review de la campaña A2P de Twilio (el revisor visita el link directo).
+   * Intenta servir desde /public (fuente) y si no existe cae a /dist
+   * (copia que genera "vite build" en producción).
+   */
+  const legalPagesDir = path.join(process.cwd(), "public");
+  const legalPagesDistDir = path.join(process.cwd(), "dist");
+  const serveLegalPage = (filename: string) => (req: express.Request, res: express.Response) => {
+    res.sendFile(path.join(legalPagesDir, filename), (err) => {
+      if (err) {
+        res.sendFile(path.join(legalPagesDistDir, filename), (err2) => {
+          if (err2) res.status(404).send("Not found");
+        });
+      }
+    });
+  };
+  app.get("/terminos-y-condiciones.html", serveLegalPage("terminos-y-condiciones.html"));
+  app.get("/privacy-policy.html", serveLegalPage("privacy-policy.html"));
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

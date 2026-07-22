@@ -567,7 +567,7 @@ export default function App() {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';
         }
-        const eventTypeAtCapture = leadDataObj.eventType || leadEventTypeRef.current;
+        const eventTypeAtCapture = leadEventTypeRef.current;
         const historySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
 
         if (leadSaveTimerRef.current) {
@@ -1247,6 +1247,27 @@ export default function App() {
               </div>
             </div>
 
+            {/* Mobile Legal Links */}
+            <div className="flex md:hidden items-center justify-center gap-4 mt-3">
+              <a
+                href="/terminos-y-condiciones.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[9px] text-slate-600 uppercase tracking-[0.2em] font-black hover:text-slate-400 transition-colors"
+              >
+                Términos
+              </a>
+              <div className="h-2 w-[1px] bg-white/5" />
+              <a
+                href="/privacy-policy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[9px] text-slate-600 uppercase tracking-[0.2em] font-black hover:text-slate-400 transition-colors"
+              >
+                Privacidad
+              </a>
+            </div>
+
             {/* Desktop Only Footer Text */}
             <div className="hidden md:flex items-center justify-center gap-6 mt-4">
               <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
@@ -1256,6 +1277,24 @@ export default function App() {
               <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
                 Seguro & Encriptado
               </p>
+              <div className="h-3 w-[1px] bg-white/5" />
+              <a
+                href="/terminos-y-condiciones.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black hover:text-slate-400 transition-colors"
+              >
+                Términos
+              </a>
+              <div className="h-3 w-[1px] bg-white/5" />
+              <a
+                href="/privacy-policy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black hover:text-slate-400 transition-colors"
+              >
+                Privacidad
+              </a>
             </div>
           </div>
         </aside>
