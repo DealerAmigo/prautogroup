@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Car, ChevronRight, ChevronLeft, MapPin, ShieldCheck, Fuel, Phone, MessageSquare, Menu, X, Sparkles, RotateCcw, ExternalLink, Settings2, Gauge } from 'lucide-react';
 import { ChatMessage, Vehicle } from './types';
 import { createSalesmanChat } from './lib/ai';
-import { getInventory, searchVehicles, getCachedInventory } from './lib/inventory';
 import { createCalendarEvent, AppointmentDetails } from './lib/calendar';
 import BookingForm from './components/BookingForm';
 import { saveLead, saveChatSession } from './lib/leads';
+import { getInventory, getCachedInventory, searchVehicles } from './lib/inventory';
 import ReactMarkdown from 'react-markdown';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -305,7 +305,7 @@ export default function App() {
     sessionStorage.removeItem('chat-messages-v3');
     sessionStorage.removeItem('gemini-history-v3');
     const newGreeting: ChatMessage = {
-      id: 'reset-' + Date.now(),
+      id: 'reset-' + Math.random().toString(36).substring(2, 11),
       role: 'assistant',
       content: '¡Hola! Le habla Camilo, su asesor virtual de GT Auto Imports en Dorado. ¿Qué tipo de vehículo está buscando? ¿SUV, pickup, sedan, o algo económico? 👋',
       timestamp: Date.now()
@@ -367,7 +367,7 @@ export default function App() {
         if (prevPool.length === 0) return prevPool;
         const [nextNudge, ...rest] = prevPool;
         const nudgeMsg: ChatMessage = {
-          id: Date.now().toString(),
+          id: Math.random().toString(36).substring(2, 11),
           role: 'assistant',
           content: nextNudge,
           timestamp: Date.now(),
@@ -398,7 +398,7 @@ export default function App() {
     clearIdleTimer(); // el cliente sí respondió -- cancela cualquier nudge pendiente
 
     const userMsg: ChatMessage = {
-      id: Date.now().toString(),
+      id: Math.random().toString(36).substring(2, 11),
       role: 'user',
       content: textToSubmit,
       timestamp: Date.now(),
@@ -436,7 +436,7 @@ export default function App() {
             }});
           } else if (call.name === 'show_booking_form') {
             setMessages(prev => [...prev, {
-              id: Date.now().toString(),
+              id: Math.random().toString(36).substring(2, 11),
               role: 'assistant',
               content: '¡Excelente! Aquí tienes el formulario para coordinar tu visita. Solo toma 30 segundos.',
               timestamp: Date.now(),
@@ -507,14 +507,14 @@ export default function App() {
 
       // Extract LEAD_DATA:
       let leadDataObj: any = null;
-      const leadMatch = responseText.match(/LEAD_DATA:\s*(\{.*\})/s);
+      const leadMatch = responseText.match(/LEAD_DATA:\s*(\{.*?\})/s);
       if (leadMatch) {
          try {
            leadDataObj = JSON.parse(leadMatch[1].trim());
          } catch(e) {
            console.error("Error parsing LEAD_DATA JSON in regex:", e);
          }
-         responseText = responseText.replace(/LEAD_DATA:\s*\{.*\}/s, '').trim();
+         responseText = responseText.replace(/LEAD_DATA:\s*\{.*?\}/s, '').trim();
       }
 
       // Extract MOSTRAR_VEHICULO:
@@ -541,6 +541,21 @@ export default function App() {
           } else {
             appointmentNotes = fields[4] || '';
             appointmentDate = fields[4] || ''; // Fallback
+          }
+          
+          if (appointmentDate) {
+            const dateParts = appointmentDate.split(' ');
+            if (dateParts.length >= 2) {
+              const dateStr = dateParts[0];
+              const timeStr = dateParts.slice(1).join(' ');
+              createCalendarEvent({
+                customerName: fields[0] || 'Cliente Web',
+                date: dateStr,
+                time: timeStr,
+                phone: fields[1] || '',
+                interest: fields[3] || 'Consulta General'
+              }).catch(err => console.error("Error background calendar event:", err));
+            }
           }
           
           saveLead({
@@ -605,7 +620,7 @@ export default function App() {
       }
       
       const botMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
+        id: Math.random().toString(36).substring(2, 11),
         role: 'assistant',
         content: responseText || (vehiclesToShow.length > 0 ? '¡Excelente! Aquí tienes la unidad disponible:' : '¿Le gustaría que coordinemos una prueba de manejo para que lo vea en persona?'),
         timestamp: Date.now(),
@@ -625,7 +640,7 @@ export default function App() {
       console.error("Gemini Error:", error);
       const errorMessage = error?.message || "Lo siento, tuve un pequeño inconveniente.";
       setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
+        id: Math.random().toString(36).substring(2, 11),
         role: 'assistant',
         content: `Error: ${errorMessage}. ¿Podrías repetirme eso?`,
         timestamp: Date.now(),
@@ -1034,7 +1049,10 @@ export default function App() {
       {/* Floating WhatsApp - REMOVED PER REQUEST */}
 
       {/* Main Header */}
-      <header className="py-4 flex-shrink-0 border-b border-zinc-900 bg-black/95 backdrop-blur-3xl px-4 z-50 sticky top-0">
+      <header className={cn(
+        "py-4 flex-shrink-0 border-b border-zinc-900 bg-black/95 backdrop-blur-3xl px-4 z-50 sticky top-0",
+        activeTab === 'chat' ? "hidden md:block" : "block"
+      )}>
         <div className="flex items-center justify-between w-full relative max-w-[1800px] mx-auto">
           {/* Logo & Status */}
           <div className="flex items-center gap-3">
@@ -1060,22 +1078,6 @@ export default function App() {
           <div className="flex flex-col items-end gap-1.5 shrink-0">
             {/* Top row of action buttons */}
             <div className="flex items-center gap-2">
-
-              {/* Clasificados.com */}
-              <button 
-                onClick={() => window.open('https://www.clasificadosonline.com/PartnersListingTranspID.asp?ID=55011', '_blank')}
-                className="hidden md:flex px-4 h-9 bg-red-600 rounded-xl items-center justify-center text-white font-black text-[10px] uppercase tracking-widest shadow-lg active:scale-90 transition-transform whitespace-nowrap gap-2 shrink-0"
-                title="Clasificados.com"
-              >
-                Clasificados.com <ExternalLink size={12} />
-              </button>
-              <button 
-                onClick={() => window.open('https://www.clasificadosonline.com/PartnersListingTranspID.asp?ID=55011', '_blank')}
-                className="flex md:hidden w-9 h-9 bg-red-600 rounded-xl items-center justify-center text-white shadow-lg active:scale-90 transition-transform shrink-0"
-                title="Clasificados.com"
-              >
-                <ExternalLink size={18} />
-              </button>
 
               {/* Prequalificación */}
               <button 
@@ -1146,7 +1148,7 @@ export default function App() {
           <aside 
             key="chat-sidebar"
             className={cn(
-              "w-full md:w-[350px] lg:w-[400px] border-r border-zinc-900 bg-black flex flex-col relative transition-all duration-500 ease-in-out",
+              "w-full md:w-[450px] lg:w-[550px] xl:w-[650px] 2xl:w-[750px] border-r border-zinc-900 bg-black flex flex-col relative transition-all duration-500 ease-in-out",
               activeTab === 'inventory' ? "hidden md:flex" : "flex"
             )}
           >
@@ -1180,6 +1182,11 @@ export default function App() {
                     if (window.innerWidth < 768) setActiveTab('chat');
                   }} 
                   onImageClick={handleImageClick}
+                  onFinanceClick={(v) => {
+                    const messageText = `Me interesa el ${v.year} ${v.make} ${v.model} y sus opciones de financiamiento.`;
+                    handleSend(messageText);
+                    if (window.innerWidth < 768) setActiveTab('chat');
+                  }}
                 />
               ))}
             </AnimatePresence>
@@ -1226,7 +1233,7 @@ export default function App() {
                     activeTab === 'chat' ? "text-white shadow-lg shadow-sky-500/40 ring-2 ring-sky-400 scale-105 z-10" : "text-sky-100 hover:text-white scale-95"
                   )}
                 >
-                  Chat
+                  Pregúntame
                   {activeTab === 'inventory' && (
                     <span className="absolute top-2.5 right-8 flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1247,51 +1254,22 @@ export default function App() {
               </div>
             </div>
 
-            {/* Mobile Legal Links */}
-            <div className="flex md:hidden items-center justify-center gap-4 mt-3">
+            {/* Footer Legal Links */}
+            <div className="flex items-center justify-center gap-6 mt-4">
               <a
                 href="/terminos-y-condiciones.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[9px] text-slate-600 uppercase tracking-[0.2em] font-black hover:text-slate-400 transition-colors"
+                className="text-[10px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors"
               >
                 Términos
               </a>
-              <div className="h-2 w-[1px] bg-white/5" />
+              <div className="h-3 w-[1px] bg-white/20" />
               <a
                 href="/privacy-policy.html"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[9px] text-slate-600 uppercase tracking-[0.2em] font-black hover:text-slate-400 transition-colors"
-              >
-                Privacidad
-              </a>
-            </div>
-
-            {/* Desktop Only Footer Text */}
-            <div className="hidden md:flex items-center justify-center gap-6 mt-4">
-              <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
-                DealerAmigo AI v3.1
-              </p>
-              <div className="h-3 w-[1px] bg-white/5" />
-              <p className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black">
-                Seguro & Encriptado
-              </p>
-              <div className="h-3 w-[1px] bg-white/5" />
-              <a
-                href="/terminos-y-condiciones.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black hover:text-slate-400 transition-colors"
-              >
-                Términos
-              </a>
-              <div className="h-3 w-[1px] bg-white/5" />
-              <a
-                href="/privacy-policy.html"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[10px] text-slate-600 uppercase tracking-[0.3em] font-black hover:text-slate-400 transition-colors"
+                className="text-[10px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors"
               >
                 Privacidad
               </a>
@@ -1326,14 +1304,9 @@ export default function App() {
                  <div className="flex gap-3">
                   <button 
                     onClick={() => {
-                      document.getElementById('inventory-filters')?.scrollIntoView({ behavior: 'smooth' });
+                      handleSend("¿Me pueden tasar mi trade-in?");
+                      setActiveTab('chat');
                     }}
-                    className="flex-1 md:flex-none px-4 py-5 bg-white text-zinc-950 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-zinc-100 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
-                  >
-                    INVENTARIO <Car size={14} className="text-zinc-950 shrink-0" />
-                  </button>
-                  <button 
-                    onClick={() => handleSend("¿Me pueden tasar mi trade-in?")}
                     className="flex-1 md:flex-none px-8 py-5 bg-sky-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-sky-400 transition-all shadow-[0_15px_30px_rgba(14,165,233,0.3)] active:scale-95"
                   >
                     Tasar Trade-In
@@ -1347,12 +1320,12 @@ export default function App() {
             </div>
 
             {/* Filter Bar */}
-            <div id="inventory-filters" className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-5 md:p-6 mb-8 relative overflow-hidden">
+            <div id="inventory-filters" className="bg-zinc-950 border border-zinc-900 rounded-[1.5rem] p-4 mb-6 relative overflow-hidden shadow-xl">
               <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 blur-2xl rounded-full pointer-events-none" />
               
-              <div className="flex flex-col gap-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white flex items-center gap-2">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <h4 className="text-sm font-black uppercase tracking-widest text-zinc-100 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 bg-sky-400 rounded-full animate-pulse" />
                     Filtrar Inventario
                   </h4>
@@ -1364,22 +1337,22 @@ export default function App() {
                         setSelectedYear('all');
                         setSelectedMaxPrice(absoluteMaxPrice);
                       }}
-                      className="text-[10px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1.5 self-start sm:self-auto"
+                      className="text-xs font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1.5 self-start sm:self-auto"
                     >
-                      <RotateCcw size={12} />
+                      <RotateCcw size={14} />
                       Limpiar Filtros
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Marca */}
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Marca</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-200">Marca</label>
                     <select
                       value={selectedMake}
                       onChange={(e) => setSelectedMake(e.target.value)}
-                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-xl px-3 py-2.5 text-base font-bold text-white focus:outline-none focus:border-sky-500/50 transition-colors"
                     >
                       <option value="all" className="bg-[#0c0c0c] text-slate-200">Todas las marcas</option>
                       {uniqueMakes.map(make => (
@@ -1389,12 +1362,12 @@ export default function App() {
                   </div>
 
                   {/* Carrocería / Categoría */}
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Tipo de Carrocería</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-200">Carrocería</label>
                     <select
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
-                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-xl px-3 py-2.5 text-base font-bold text-white focus:outline-none focus:border-sky-500/50 transition-colors"
                     >
                       <option value="all" className="bg-[#0c0c0c] text-slate-200">Todos los tipos</option>
                       {uniqueCategories.map(cat => (
@@ -1404,12 +1377,12 @@ export default function App() {
                   </div>
 
                   {/* Año */}
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Año</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-zinc-200">Año</label>
                     <select
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(e.target.value)}
-                      className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors"
+                      className="w-full bg-white/[0.05] border border-white/10 rounded-xl px-3 py-2.5 text-base font-bold text-white focus:outline-none focus:border-sky-500/50 transition-colors"
                     >
                       <option value="all" className="bg-[#0c0c0c] text-slate-200">Todos los años</option>
                       {uniqueYears.map(year => (
@@ -1419,10 +1392,10 @@ export default function App() {
                   </div>
 
                   {/* Rango de Precio */}
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1.5">
                     <div className="flex justify-between items-center">
-                      <label className="text-[10px] font-black uppercase tracking-wider text-zinc-300">Precio Máximo</label>
-                      <span className="text-xs font-mono font-bold text-sky-400">
+                      <label className="text-xs font-black uppercase tracking-wider text-zinc-200">Precio Máx</label>
+                      <span className="text-sm font-mono font-black text-sky-400">
                         ${(selectedMaxPrice || absoluteMaxPrice).toLocaleString()}
                       </span>
                     </div>
@@ -1434,14 +1407,14 @@ export default function App() {
                         step="1000"
                         value={selectedMaxPrice || absoluteMaxPrice}
                         onChange={(e) => setSelectedMaxPrice(Number(e.target.value))}
-                        className="w-full accent-sky-500 cursor-pointer h-1.5 bg-white/10 rounded-lg appearance-none"
+                        className="w-full accent-sky-500 cursor-pointer h-2 bg-white/10 rounded-lg appearance-none"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* Filter counts info */}
-                <div className="text-[10px] font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5 mt-2">
+                <div className="text-[11px] font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5 mt-1">
                   <span>Mostrando {filteredInventory.length} de {inventory.length} unidades certificadas</span>
                 </div>
               </div>
@@ -1516,7 +1489,7 @@ export default function App() {
             </div>
           </div>
 
-          <footer className="h-20 md:h-16 bg-black border-t border-zinc-900 flex items-center px-6 md:px-10 justify-between shrink-0">
+          <footer className="h-auto py-4 md:py-0 md:h-16 bg-black border-t border-zinc-900 flex items-center px-6 md:px-10 justify-between shrink-0">
             <div className="hidden lg:flex gap-10">
               <span className="text-[9px] text-zinc-300 uppercase font-black tracking-[0.3em] flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse" /> Live Updates
@@ -1530,7 +1503,7 @@ export default function App() {
             </div>
 
             {/* Mobile Tab Switcher in Inventory Footer */}
-            <div className="flex md:hidden items-center justify-center w-full">
+            <div className="flex md:hidden flex-col items-center justify-center w-full gap-3 mt-1">
               <div className="flex gap-2 w-full max-w-[320px]">
                 <button 
                   onClick={() => setActiveTab('chat')}
@@ -1540,7 +1513,7 @@ export default function App() {
                     activeTab === 'chat' ? "text-white shadow-lg shadow-sky-500/40 ring-2 ring-sky-400 scale-105 z-10" : "text-sky-100 hover:text-white scale-95"
                   )}
                 >
-                  Chat
+                  Pregúntame
                   {activeTab === 'inventory' && (
                     <span className="absolute top-2.5 right-8 flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1559,10 +1532,17 @@ export default function App() {
                   Inventario
                 </button>
               </div>
+              <div className="flex items-center gap-4">
+                <a href="/terminos-y-condiciones.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.2em] font-black transition-colors">Términos</a>
+                <div className="h-2 w-[1px] bg-white/20" />
+                <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.2em] font-black transition-colors">Privacidad</a>
+              </div>
             </div>
 
             <div className="hidden md:flex items-center gap-4 ml-auto">
-              <p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.3em]">GT Auto Imports &copy; 2026 • DealerAmigo PRO</p>
+              <a href="/terminos-y-condiciones.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors">Términos</a>
+              <div className="h-3 w-[1px] bg-white/20" />
+              <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors">Privacidad</a>
             </div>
           </footer>
         </section>
@@ -1601,19 +1581,17 @@ export default function App() {
   );
 }
 
-function MessageBubble({ message, onVehicleClick, onImageClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string, v?: Vehicle) => void }) {
+function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string, v?: Vehicle) => void, onFinanceClick?: (v: Vehicle) => void }) {
   const isBot = message.role === 'assistant';
   const hasVehicles = message.vehicles && message.vehicles.length > 0;
   
   let cleanContent = message.content;
-  let showPreaprobacionCard = false;
 
   if (isBot && (
     message.content.includes("gtautopr.com/pre-aprobacion") || 
     message.content.includes("pre-aprobacion") || 
     message.content.includes("¿Quieres acelerar el proceso?")
   )) {
-    showPreaprobacionCard = true;
     // Strip the HTML code if present to avoid rendering raw HTML as code text
     cleanContent = message.content.replace(/<div[\s\S]*?<\/div>/gi, "").trim();
   }
@@ -1669,19 +1647,6 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
             >
               {cleanContent}
             </ReactMarkdown>
-          </div>
-        )}
-
-        {showPreaprobacionCard && (
-          <div style={{ margin: '12px 0', padding: '16px', borderRadius: '12px', background: '#f4f7ff', textAlign: 'center', color: '#1e293b', border: '1px solid #e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
-            <strong style={{ color: '#0f172a', fontSize: '18px', fontWeight: 'bold' }}>¿Quieres acelerar el proceso?</strong><br/><br/>
-            Completa tu preaprobación segura en línea y podremos mostrarte las mejores opciones disponibles.<br/><br/>
-            <a href="https://gtautopr.com/pre-aprobacion/"
-               target="_blank"
-               rel="noopener noreferrer"
-               style={{ background: '#4F46E5', color: 'white', padding: '12px 20px', borderRadius: '8px', textDecoration: 'none', fontWeight: 'bold', display: 'inline-block', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }}>
-               ✅ Precalificarme ahora
-            </a>
           </div>
         )}
       </div>
@@ -1785,6 +1750,15 @@ function MessageBubble({ message, onVehicleClick, onImageClick }: { message: Cha
                         {v.mpg && <span className="text-xs text-emerald-400 font-round font-bold uppercase tracking-tight">{v.mpg}</span>}
                       </div>
                     )}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFinanceClick?.(v);
+                      }}
+                      className="mt-1 w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <ShieldCheck size={12} /> Oferta Especial
+                    </button>
                     {v.specialOffer && (
                       <div className="bg-sky-950/30 border border-sky-500/20 px-2 py-1 rounded text-xs text-sky-300 font-bold uppercase tracking-tighter w-fit mt-1">
                         {v.specialOffer}
@@ -1919,7 +1893,14 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
         </div>
 
         <button 
-          onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onFinanceClick) {
+              onFinanceClick(vehicle, estimatedPayment);
+            } else {
+              window.open('https://gtautopr.com/pre-aprobacion/', '_blank');
+            }
+          }}
           className="relative w-full mt-2 md:mt-3 bg-white border-2 border-emerald-400/60 p-3 md:p-5 rounded-[1rem] md:rounded-2xl flex items-center justify-between hover:bg-emerald-50 hover:border-emerald-500 transition-all group/finance shadow-[0_0_15px_rgba(16,185,129,0.2)] md:shadow-[0_0_20px_rgba(16,185,129,0.3)]"
         >
           <div className="absolute inset-0 rounded-[1rem] md:rounded-2xl ring-2 md:ring-4 ring-emerald-400/30 animate-pulse pointer-events-none" />

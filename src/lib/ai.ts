@@ -10,7 +10,7 @@ function stripTagsForHistory(raw: string): string {
     .replace(/HANDOFF_URGENTE:.*$/gm, "")
     .replace(/NUDGES:.*$/gm, "")
     .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
-    .replace(/LEAD_DATA:\s*\{.*\}/gs, "")
+    .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
     .trim();
 }
 

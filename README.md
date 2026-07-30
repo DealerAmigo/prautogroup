@@ -1,20 +1,22 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+DealerAmigo AI System
 
-# Run and deploy your AI Studio app
+Arquitectura:
+Node.js / Express
+Claude API
+Twilio SMS
+Google Apps Script
+Google Sheets CRM
+n8n Automation
 
-This contains everything you need to run your app locally.
+Flujos:
+1. Web Chat Lead Capture
+2. Missed Call SMS Agent
+3. Inventory Agent
+4. BDC Follow Up Agent
 
-View your app in AI Studio: https://ai.studio/apps/6243b28b-18fd-48fb-b26d-de0c1c512a48
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Variables necesarias:
+LEADS_SCRIPT_URL
+INVENTORY_SCRIPT_URL
+PROXY_KEY
+CLAUDE_API_KEY
+TWILIO credentials

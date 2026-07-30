@@ -118,14 +118,14 @@ function extractTags(rawText: string) {
     text = text.replace(/HANDOFF_URGENTE:.*$/m, "").trim();
   }
 
-  const leadMatch = text.match(/LEAD_DATA:\s*(\{.*\})/s);
+  const leadMatch = text.match(/LEAD_DATA:\s*(\{.*?\})/s);
   if (leadMatch) {
     try {
       leadData = JSON.parse(leadMatch[1]);
     } catch (e) {
       console.error("[TwilioAgent] Error parseando LEAD_DATA:", e);
     }
-    text = text.replace(/LEAD_DATA:\s*\{.*\}/s, "").trim();
+    text = text.replace(/LEAD_DATA:\s*\{.*?\}/s, "").trim();
   }
 
   // MOSTRAR_VEHICULO no aplica a SMS de texto plano (no hay carrusel de fotos) -- se limpia y se ignora.
@@ -154,6 +154,7 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     action: "saveLead",
     _token: proxyKey,
     proxyKey: proxyKey,
+    sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0",
     nombre: lead.nombre || "",
     telefono: lead.telefono || "",
     email: lead.email || "",
@@ -214,7 +215,7 @@ async function logChatTurn(userMessage: string, botReply: string): Promise<void>
     await fetch(leadsScriptUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "logChat", _token: proxyKey, proxyKey, userMessage, botReply })
+      body: JSON.stringify({ action: "logChat", _token: proxyKey, proxyKey, sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0", userMessage, botReply })
     });
   } catch (err) {
     console.error("[TwilioAgent] Error guardando chat log de auditoria:", err);
@@ -269,7 +270,7 @@ router.post("/voice-missed", async (req, res) => {
   res.type("text/xml");
   res.send(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say language="es-MX">Gracias por llamar a G T Auto Imports. En un momento le enviamos un mensaje de texto para ayudarle.</Say>
+  <Say language="es-MX">Gracias por llamar a "GeeTee" Auto Imports. En un momento le enviamos un mensaje de texto para comunicarnos.</Say>
   <Hangup/>
 </Response>`);
 });

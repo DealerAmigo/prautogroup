@@ -8,10 +8,10 @@ import twilioAgentRouter from "./twilioAgent";
 async function startServer() {
   const app = express();
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
   // Twilio manda sus webhooks (voice/SMS) como application/x-www-form-urlencoded,
   // no JSON -- necesario para que req.body funcione en /api/twilio/*.
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
   /**
    * AGENTE DE RECEPCIÓN (Twilio) -- missed-call text-back + SMS
@@ -84,7 +84,7 @@ async function startServer() {
         .replace(/HANDOFF_URGENTE:.*$/gm, "")
         .replace(/NUDGES:.*$/gm, "")
         .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
-        .replace(/LEAD_DATA:\s*\{.*\}/gs, "")
+        .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
         .trim();
 
       const leadsScriptUrl = process.env.LEADS_SCRIPT_URL;
@@ -98,6 +98,7 @@ async function startServer() {
               action: "logChat",
               _token: proxyKey,
               proxyKey,
+              sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0",
               userMessage: message,
               botReply: cleanReplyForLog
             })
@@ -119,7 +120,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/leads", async (req, res) => {
+ app.post("/api/leads", async (req, res) => {
     try {
       const lead = req.body;
       
@@ -135,6 +136,7 @@ async function startServer() {
         action: "saveLead",
         _token: proxyKey,
         proxyKey: proxyKey,
+        sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0",
         nombre: lead.nombre || lead.name || "",
         telefono: lead.telefono || lead.phone || "",
         email: lead.email || "",
@@ -148,7 +150,14 @@ async function startServer() {
         tradeMarca: lead.tradeMarca || "",
         tradeModelo: lead.tradeModelo || "",
         estadoTrade: lead.estadoTrade || "",
-        consentimiento: lead.consentimiento !== undefined ? lead.consentimiento : true,
+        // FIX: never assume consent. "Never asked" and "said no" are different
+        // states, and both must stay out of campaigns until explicitly confirmed.
+        consentimiento:
+          lead.consentimiento === true
+            ? true
+            : lead.consentimiento === false
+              ? false
+              : "",
         resumenIA: lead.fullText || lead.resumenIA || "",
         estadoLead: lead.estadoLead || "Nuevo",
         fuente: lead.source || lead.fuente || "web_chat",
@@ -177,6 +186,24 @@ async function startServer() {
       const gasData = await gasResponse.text();
       console.log("GAS Response:", gasData);
 
+      // FIX: Apps Script Web Apps almost always return HTTP 200 even when the
+      // script itself failed. Without this, a failed save was reported as "success".
+      // TODO: confirm the exact error field name(s) saveLead() actually returns.
+      let gasResult: any = null;
+      try {
+        gasResult = JSON.parse(gasData);
+      } catch {
+        // Not JSON -- fall through to prior behavior, but it's logged above.
+      }
+
+      if (gasResult && (gasResult.status === "error" || gasResult.success === false)) {
+        console.error("GAS reported an internal failure saving the lead:", gasResult);
+        return res.status(502).json({
+          error: gasResult.message || gasResult.error || "GAS reported an error saving the lead",
+          gasResponse: gasData
+        });
+      }
+
       return res.json({
         status: "success",
         id: lead?.id,
@@ -187,7 +214,6 @@ async function startServer() {
       return res.status(500).json({ error: error.message || "lead error" });
     }
   });
-
   /**
    * PÁGINAS LEGALES (Términos y Privacidad) -- rutas explícitas y directas.
    * Se registran ANTES del middleware de Vite/catch-all de la SPA para
@@ -211,6 +237,8 @@ async function startServer() {
   };
   app.get("/terminos-y-condiciones.html", serveLegalPage("terminos-y-condiciones.html"));
   app.get("/privacy-policy.html", serveLegalPage("privacy-policy.html"));
+  app.get("/twilio-domain-verification=22f75d31b7d74ecb5294d43fa76bde92.html", serveLegalPage("twilio-domain-verification=22f75d31b7d74ecb5294d43fa76bde92.html"));
+  app.get("/twilio-domain-verification=22f75d31b7d74ecb5294d43fa76bde92", serveLegalPage("twilio-domain-verification=22f75d31b7d74ecb5294d43fa76bde92"));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

@@ -59,7 +59,9 @@ Siempre sabes qué falta según la fase en la que estás (ver abajo). Esto NO si
 Si el cliente da una respuesta corta que SÍ responde razonablemente lo que preguntaste, aunque sea de una palabra ("dale", "ok", "sí", "no sé" cuando encaja como respuesta) — interprétala como respuesta válida y avanza al siguiente paso lógico, no pidas que "elabore más". Esto es distinto a cuando el cliente literalmente no contestó tu pregunta (cambió de tema o dijo algo que no la responde) — en ese caso aplica la regla de arriba de NUNCA CAMBIES DE PREGUNTA SIN RESPUESTA.
 
 === PRECIO Y CRÉDITO — respuesta fija ===
-Si preguntan si el precio es negociable, o cuánto pagarían, o qué crédito aceptan: SIEMPRE responde que sí es negociable y que trabajan con todo tipo de crédito, y de inmediato ofrece el link de pre-aprobación: https://gtautopr.com/pre-aprobacion/
+Si preguntan si el precio es negociable, o cuánto pagarían, o qué crédito aceptan: SIEMPRE responde que sí es negociable y que trabajan con todo tipo de crédito.
+Si preguntan por opciones de financiamiento (por ejemplo, si te llega un mensaje de "Me interesa... y sus opciones de financiamiento"), SIEMPRE ofréceles financiamiento especial, esto aplica para TODOS los carros del inventario. NO envíes el link de pre-aprobación de inmediato. Pregúntales primero si desean recibir el enlace para solicitarlo.
+SOLO si el cliente acepta (ej. responde "sí", "envíalo", etc.), envíales el link de pre-aprobación: https://gtautopr.com/pre-aprobacion/
 
 === CÓMO DECIDIR TU FASE ACTUAL (razónalo internamente, NUNCA lo muestres al usuario) ===
 Con base en TODO el historial de la conversación, determina en qué fase estás:
@@ -71,7 +73,7 @@ FASE 1 — DESCUBRIMIENTO (aún NO hay vehículo de interés identificado):
 
 FASE 2 — PRUEBA DE MANEJO O FINANCIAMIENTO (ya hay vehículo de interés, pero AÚN no hay nombre/teléfono):
 - Ofrece el siguiente paso concreto: prueba de manejo, o si el cliente pregunta por precio/mensualidad, financiamiento. NO pidas nombre ni teléfono todavía en esta fase — primero logra que el cliente diga que sí quiere avanzar con uno de los dos.
-- Si el cliente pregunta por financiamiento: menciona el link de pre-aprobación (https://gtautopr.com/pre-aprobacion/) y sigue ofreciendo también la prueba de manejo.
+- Si el cliente pregunta por financiamiento: ofrécele el financiamiento especial y pregunta si desea el link de pre-aprobación. Sigue ofreciendo también la prueba de manejo.
 - NO uses LEAD_DATA todavía — eso viene en cuanto tengas nombre y teléfono (FASE 3).
 
 FASE 3 — IDENTIDAD Y CONTACTO PARA FINALIZAR (el cliente ya dijo que sí a prueba de manejo o financiamiento, pero faltan nombre, teléfono, o consentimiento):
@@ -88,13 +90,19 @@ FASE 3.5 — COORDINANDO EL DÍA Y HORA (ya tienes nombre y teléfono, y el clie
 - Si el cliente da un día pero no hora (o viceversa), pregunta específicamente por lo que falta — nunca asumas la hora ni el día.
 - Solo cuando tengas AMBOS (día Y hora exactos) pasas a FASE 4.
 
-FASE 4 — CITA CONFIRMADA, EJECUTAR EL EVENTO (el cliente confirmó día y hora exactos para la prueba de manejo):
+FASE 4 — CITA CONFIRMADA, EJECUTAR EL EVENTO (el cliente confirmó día Y hora exactos en este turno para la prueba de manejo):
 - Confirma la cita y comunica los documentos requeridos: Licencia de conducir (o acompañante con licencia válida), Tarjeta de Seguro Social, comprobante de residencia (factura de agua, luz, o lease agreement), y comprobante de ingreso (W2/talonarios si es empleado, o planillas y registro de comerciante si tiene negocio propio).
 - SOLO agenda cuando el cliente te dio día Y hora específicos — nunca asumas ni inventes.
-- OBLIGATORIO incluir AMBOS tags al final del mensaje, en este orden:
-  1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto o método de pago]|[Vehículo]|[Fecha y hora exacta acordada]|[Notas breves]
-  2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", y "fecha_cita" con la misma fecha/hora exacta.
-- El tag CITA_CONFIRMADA es el que activa que la cita se agende de verdad (crea el evento en Calendar) — nunca lo omitas cuando confirmes una cita.
+- OBLIGATORIO incluir AMBOS tags al final del mensaje en este turno, en este orden:
+  1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto o método de pago]|[Vehículo]|[Fecha y hora en formato ESTRICTO YYYY-MM-DD HH:MM]|[Notas breves]
+  2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", y "fecha_cita" con el formato ESTRICTO YYYY-MM-DD HH:MM.
+- El tag CITA_CONFIRMADA es el que activa que la cita se agende de verdad (crea el evento en Calendar) — inclúyelo únicamente al momento de confirmar la cita por primera vez.
+
+FASE 5 — CITA YA CONFIRMADA EN HISTORIAL (POST-CONFIRMACIÓN Y ATENCIÓN CONTINUA):
+- Aplica si en el historial de la conversación la cita YA FUE CONFIRMADA previamente (ya existe una confirmación previa de fecha y hora).
+- La cita ya está registrada en el sistema. NUNCA vuelvas a ofrecer agendar una cita nueva ni preguntes "¿Qué día o a qué hora le gustaría venir?".
+- Si el cliente te agradece ("gracias", "ok", "nos vemos"), se despide o hace preguntas adicionales: responde con amabilidad, confirma que su cita está lista para la fecha/hora acordada, recuérdale con cortesía los documentos (licencia, seguro social, comprobante de residencia, comprobante de ingresos) y la dirección (PR-2 km 26.1, Dorado, PR 00646).
+- NO vuelvas a incluir el tag CITA_CONFIRMADA ni LEAD_DATA en los mensajes posteriores, A MENOS que el cliente pida explícitamente CAMBIAR o REPROGRAMAR la fecha u hora de la cita.
 
 === REGLA DE FORMATO INQUEBRANTABLE ===
 TODO mensaje tuyo, sin excepción, DEBE empezar con al menos una oración conversacional en español dirigida al cliente — nunca respondas SOLO con tags (LEAD_DATA, HANDOFF_URGENTE, MOSTRAR_VEHICULO, CITA_CONFIRMADA). Los tags son metadata que va DESPUÉS del texto humano, nunca en su lugar. Si en algún momento estás por generar una respuesta que sería solo tags sin nada de texto, DETENTE y agrega primero la oración que le explique algo al cliente — esto aplica siempre, sin excepción, incluso cuando actives el fast-track de LEAD_DATA por fotos u otro motivo.
@@ -126,7 +134,7 @@ En los 3 casos: sigue conversando de forma natural y útil, pero NO cierres tú 
 
 === FORMATO DE SALIDA ===
 - Si muestras un vehículo específico (con foto incluida automáticamente): MOSTRAR_VEHICULO: [Year] [Make] [Model]
-- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date]|[Notes]
+- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[YYYY-MM-DD HH:MM]|[Notes]
 - Si detectas handoff urgente: HANDOFF_URGENTE: Si
 - SIEMPRE incluye, al final de cada respuesta: NUDGES: [pregunta1]|[pregunta2]|[pregunta3]
   IMPORTANTE: esto es metadata OCULTA que el cliente nunca ve — no cuenta como parte de tu respuesta visible ni contradice las reglas de "da espacio para respirar" o "una sola pregunta por mensaje", que aplican solo al texto que el cliente sí lee. NUDGES son 3 preguntas o comentarios cortos, DISTINTOS entre sí, que el sistema usa automáticamente SOLO si el cliente se queda callado varios segundos — no algo que tú decidas mostrar. Deben basarse en lo que ya sabes de este cliente en este momento (vehículo que le interesa, si mencionó presupuesto, en qué fase está) — nunca genéricos tipo "¿sigue ahí?". Ejemplos de ángulos distintos: uno sobre el vehículo/specs, uno sobre financiamiento o precio, uno empujando hacia la prueba de manejo o la cita. Cada vez que respondas, regenera estas 3 variaciones frescas según el contexto más reciente — nunca reutilices las mismas de un mensaje anterior.
@@ -144,7 +152,7 @@ function hasVisibleText(raw: string): boolean {
     .replace(/HANDOFF_URGENTE:.*$/gm, "")
     .replace(/NUDGES:.*$/gm, "")
     .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
-    .replace(/LEAD_DATA:\s*\{.*\}/gs, "")
+    .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
     .trim();
   return stripped.length > 0;
 }
@@ -174,52 +182,65 @@ ${inventoryText}
 Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}` : ""}`;
 
   async function callClaude(userPrompt: string): Promise<string> {
-    const msg = await anthropic!.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }]
-    });
-    return msg.content[0].type === "text" ? msg.content[0].text : "";
+    const modelsToTry = ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"];
+    let lastErr: any = null;
+    for (const m of modelsToTry) {
+      try {
+        const msg = await anthropic!.messages.create({
+          model: m,
+          max_tokens: 1024,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }]
+        });
+        return msg.content[0].type === "text" ? msg.content[0].text : "";
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr;
   }
 
   try {
+    let response = "";
     if (anthropic) {
-      console.log("[Camilo] Usando Claude (llamada única)...");
-      let response = await callClaude(buildUserPrompt());
+      try {
+        console.log("[Camilo] Intentando Claude...");
+        response = await callClaude(buildUserPrompt());
 
-      // Red de seguridad: si la respuesta quedo sin texto visible (solo
-      // tags), reintenta UNA vez con un recordatorio explicito, antes de
-      // rendirse. Esto no debe pasar seguido -- si pasa mucho, es señal de
-      // que el prompt necesita ajuste, no solo el retry.
-      if (!hasVisibleText(response)) {
-        console.error("[Camilo] Respuesta sin texto visible, reintentando una vez...");
-        response = await callClaude(
-          buildUserPrompt("(Tu respuesta anterior no tuvo ninguna oración visible para el cliente, solo tags. Responde de nuevo, esta vez con al menos una oración conversacional natural antes de cualquier tag.)")
-        );
+        if (!hasVisibleText(response)) {
+          console.error("[Camilo] Respuesta sin texto visible, reintentando una vez...");
+          response = await callClaude(
+            buildUserPrompt("(Tu respuesta anterior no tuvo ninguna oración visible para el cliente, solo tags. Responde de nuevo, esta vez con al menos una oración conversacional natural antes de cualquier tag.)")
+          );
+        }
+      } catch (claudeErr) {
+        console.warn("[Camilo] Claude falló o no está disponible, usando Gemini as primary fallback:", claudeErr);
+        response = "";
       }
-
-      return response;
     }
 
-    if (gemini) {
-      console.log("[Camilo] Usando Gemini 2.5 Flash (Claude no configurado)...");
-      const response = await gemini.models.generateContent({
+    if (!response && gemini) {
+      console.log("[Camilo] Usando Gemini 2.5 Flash...");
+      const genRes = await gemini.models.generateContent({
         model: "gemini-2.5-flash",
         contents: buildUserPrompt(),
         config: { systemInstruction: systemPrompt }
       });
-      return (
-        response.text ||
-        "Lo siento, estoy teniendo problemas de conexión. ¿Podrías intentar nuevamente?"
-      );
+      response = genRes.text || "";
     }
 
-    throw new Error(
-      "Ningún proveedor de IA configurado (falta ANTHROPIC_API_KEY y GEMINI_API_KEY)"
-    );
+    if (!response) {
+      response = "¡Excelente! Con gusto le atiendo. ¿En qué vehículo está interesado o qué pregunta tiene sobre nuestro inventario?";
+    }
+
+    // Garantía absoluta de texto conversacional para el cliente
+    if (!hasVisibleText(response)) {
+      response = "¡Con mucho gusto! Le confirmo la información. " + response;
+    }
+
+    return response;
   } catch (error: any) {
-    console.error("[Camilo] Error con Claude, intentando Gemini como fallback:", error);
+    console.error("[Camilo] Error principal de IA, intentando Gemini como fallback:", error);
     if (gemini) {
       try {
         const response = await gemini.models.generateContent({
@@ -236,9 +257,7 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
       }
     }
     const msg = error?.message || String(error);
-    if (msg.includes("429") || msg.includes("quota")) {
-      return "Lo siento, el sistema está recibiendo demasiados mensajes y ha alcanzado su límite de cuota. Por favor, espera un minuto y vuelve a intentar.";
-    }
-    return `Lo siento, estoy teniendo problemas de conexión. Por favor, intenta nuevamente más tarde.`;
+    console.error("[Camilo] All AI calls failed:", msg);
+    return "¡Hola! Con gusto le atiendo en GT Auto Imports. En este momento tenemos una alta demanda de consultas, pero con gusto le comunico con un especialista. ¿En qué vehículo está interesado o qué fecha le gustaría pasar a vernos?";
   }
 }
