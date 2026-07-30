@@ -182,63 +182,50 @@ ${inventoryText}
 Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}` : ""}`;
 
   async function callClaude(userPrompt: string): Promise<string> {
-    const modelsToTry = ["claude-3-5-sonnet-20241022", "claude-3-haiku-20240307"];
-    let lastErr: any = null;
-    for (const m of modelsToTry) {
-      try {
-        const msg = await anthropic!.messages.create({
-          model: m,
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: [{ role: "user", content: userPrompt }]
-        });
-        return msg.content[0].type === "text" ? msg.content[0].text : "";
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    throw lastErr;
+    const msg = await anthropic!.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }]
+    });
+    return msg.content[0].type === "text" ? msg.content[0].text : "";
   }
 
   try {
-    let response = "";
     if (anthropic) {
-      try {
-        console.log("[Camilo] Intentando Claude...");
-        response = await callClaude(buildUserPrompt());
+      console.log("[Camilo] Usando Claude (llamada única)...");
+      let response = await callClaude(buildUserPrompt());
 
-        if (!hasVisibleText(response)) {
-          console.error("[Camilo] Respuesta sin texto visible, reintentando una vez...");
-          response = await callClaude(
-            buildUserPrompt("(Tu respuesta anterior no tuvo ninguna oración visible para el cliente, solo tags. Responde de nuevo, esta vez con al menos una oración conversacional natural antes de cualquier tag.)")
-          );
-        }
-      } catch (claudeErr) {
-        console.warn("[Camilo] Claude falló o no está disponible, usando Gemini as primary fallback:", claudeErr);
-        response = "";
+      // Red de seguridad: si la respuesta quedo sin texto visible (solo
+      // tags), reintenta UNA vez con un recordatorio explicito, antes de
+      // rendirse. Esto no debe pasar seguido -- si pasa mucho, es señal de
+      // que el prompt necesita ajuste, no solo el retry.
+      if (!hasVisibleText(response)) {
+        console.error("[Camilo] Respuesta sin texto visible, reintentando una vez...");
+        response = await callClaude(
+          buildUserPrompt("(Tu respuesta anterior no tuvo ninguna oración visible para el cliente, solo tags. Responde de nuevo, esta vez con al menos una oración conversacional natural antes de cualquier tag.)")
+        );
       }
+
+      return response;
     }
 
-    if (!response && gemini) {
-      console.log("[Camilo] Usando Gemini 2.5 Flash...");
-      const genRes = await gemini.models.generateContent({
+    if (gemini) {
+      console.log("[Camilo] Usando Gemini 2.5 Flash (Claude no configurado)...");
+      const response = await gemini.models.generateContent({
         model: "gemini-2.5-flash",
         contents: buildUserPrompt(),
         config: { systemInstruction: systemPrompt }
       });
-      response = genRes.text || "";
+      return (
+        response.text ||
+        "Lo siento, estoy teniendo problemas de conexión. ¿Podrías intentar nuevamente?"
+      );
     }
 
-    if (!response) {
-      response = "¡Excelente! Con gusto le atiendo. ¿En qué vehículo está interesado o qué pregunta tiene sobre nuestro inventario?";
-    }
-
-    // Garantía absoluta de texto conversacional para el cliente
-    if (!hasVisibleText(response)) {
-      response = "¡Con mucho gusto! Le confirmo la información. " + response;
-    }
-
-    return response;
+    throw new Error(
+      "Ningún proveedor de IA configurado (falta ANTHROPIC_API_KEY y GEMINI_API_KEY)"
+    );
   } catch (error: any) {
     console.error("[Camilo] Error principal de IA, intentando Gemini como fallback:", error);
     if (gemini) {
@@ -257,7 +244,6 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
       }
     }
     const msg = error?.message || String(error);
-    console.error("[Camilo] All AI calls failed:", msg);
-    return "¡Hola! Con gusto le atiendo en GT Auto Imports. En este momento tenemos una alta demanda de consultas, pero con gusto le comunico con un especialista. ¿En qué vehículo está interesado o qué fecha le gustaría pasar a vernos?";
+    return `[System Error] Claude failed with: ${msg}. If you are testing this on the Shared App URL, please 'Share' the app again to deploy the latest code (which uses a working Claude model), or test in the Dev preview.`;
   }
 }

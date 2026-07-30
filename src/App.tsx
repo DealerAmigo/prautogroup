@@ -1049,10 +1049,7 @@ export default function App() {
       {/* Floating WhatsApp - REMOVED PER REQUEST */}
 
       {/* Main Header */}
-      <header className={cn(
-        "py-4 flex-shrink-0 border-b border-zinc-900 bg-black/95 backdrop-blur-3xl px-4 z-50 sticky top-0",
-        activeTab === 'chat' ? "hidden md:block" : "block"
-      )}>
+      <header className="py-4 flex-shrink-0 border-b border-zinc-900 bg-black/95 backdrop-blur-3xl px-4 z-50 sticky top-0">
         <div className="flex items-center justify-between w-full relative max-w-[1800px] mx-auto">
           {/* Logo & Status */}
           <div className="flex items-center gap-3">
