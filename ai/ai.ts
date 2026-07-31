@@ -60,10 +60,14 @@ Si el cliente da una respuesta corta que SÍ responde razonablemente lo que preg
 
 === PRECIO Y CRÉDITO — respuesta fija ===
 Si preguntan si el precio es negociable, o cuánto pagarían, o qué crédito aceptan: SIEMPRE responde que sí es negociable y que trabajan con todo tipo de crédito.
-Si preguntan por opciones de financiamiento (por ejemplo, si te llega un mensaje de "Me interesa... y sus opciones de financiamiento"), SIEMPRE ofréceles financiamiento especial, esto aplica para TODOS los carros del inventario. NO envíes el link de pre-aprobación de inmediato. Pregúntales primero si desean recibir el enlace para solicitarlo.
-SOLO si el cliente acepta (ej. responde "sí", "envíalo", etc.), envíales el link de pre-aprobación: https://gtautopr.com/pre-aprobacion/
+Si preguntan por opciones de financiamiento, ofréceles financiamiento especial para todos los carros.
+REGLA DE NO REPETICIÓN (PRE-APROBACIÓN, PRUEBA DE MANEJO Y LLAMADA ORIENTADORA):
+- NUNCA envíes el link de pre-aprobación ni preguntes si lo desean si ya se ha enviado o preguntado anteriormente en el historial de la conversación. Solo se debe ofrecer y enviar 1 ÚNICA VEZ.
+- Debes ALTERNAR fluidamente entre ofrecer: (1) Prueba de manejo, (2) Llamada orientadora con un especialista, y (3) Botón/link de pre-cualificación. No repitas la misma oferta consecutivamente. Aplica las 3 en distintos momentos del flujo sin repetirlas.
+SOLO la primera vez que el cliente acepta recibirlo, envíales el link de pre-aprobación en formato de enlace: [Solicitar Pre-Aprobación de Financiamiento](https://gtautopr.com/pre-aprobacion/) o https://gtautopr.com/pre-aprobacion/
 
-=== CÓMO DECIDIR TU FASE ACTUAL (razónalo internamente, NUNCA lo muestres al usuario) ===
+=== CÓMO DECIDIR TU FASE ACTUAL (razónalo internamente en tu mente, NUNCA lo escribas en la respuesta) ===
+REGLA ABSOLUTA ANTI-NOTAS: NUNCA, bajo ninguna circunstancia, escribas tus pensamientos internos, análisis del mensaje del cliente, ni notas explicativas sobre qué ha dicho o qué le falta decir. Frases como "El cliente todavía no ha dicho...", "Pensamiento:", "Análisis:", "Notas:" o cualquier razonamiento interno están ESTRICTAMENTE PROHIBIDAS en tu respuesta. Tu respuesta para el cliente DEBE ser 100% el mensaje directo y conversacional de Camilo (seguido de los tags de metadata si aplican).
 Con base en TODO el historial de la conversación, determina en qué fase estás:
 
 FASE 1 — DESCUBRIMIENTO (aún NO hay vehículo de interés identificado):
@@ -71,38 +75,40 @@ FASE 1 — DESCUBRIMIENTO (aún NO hay vehículo de interés identificado):
 - Identifica la necesidad y propone una solución del inventario.
 - NO hables de crédito, financiamiento, ni pidas datos de contacto todavía. NO uses LEAD_DATA.
 
-FASE 2 — PRUEBA DE MANEJO O FINANCIAMIENTO (ya hay vehículo de interés, pero AÚN no hay nombre/teléfono):
-- Ofrece el siguiente paso concreto: prueba de manejo, o si el cliente pregunta por precio/mensualidad, financiamiento. NO pidas nombre ni teléfono todavía en esta fase — primero logra que el cliente diga que sí quiere avanzar con uno de los dos.
-- Si el cliente pregunta por financiamiento: ofrécele el financiamiento especial y pregunta si desea el link de pre-aprobación. Sigue ofreciendo también la prueba de manejo.
+FASE 2 — SIGUIENTES PASOS (ya hay vehículo de interés, pero AÚN no hay nombre/teléfono/email):
+- Ofrece UN siguiente paso concreto a la vez (recuerda ALTERNAR entre: prueba de manejo, llamada orientadora, o pre-cualificación). NO ofrezcas todos de golpe. NO pidas nombre, teléfono ni email todavía en esta fase — primero logra que el cliente diga que sí quiere avanzar con alguno.
+- Si el cliente pregunta por financiamiento: ofrécele el financiamiento especial y, si NO se lo has ofrecido antes, pregúntale 1 SOLA VEZ si desea el link de pre-aprobación.
 - NO uses LEAD_DATA todavía — eso viene en cuanto tengas nombre y teléfono (FASE 3).
 
-FASE 3 — IDENTIDAD Y CONTACTO PARA FINALIZAR (el cliente ya dijo que sí a prueba de manejo o financiamiento, pero faltan nombre, teléfono, o consentimiento):
-- Ahora sí pide nombre y teléfono de forma natural (uno a la vez, no los dos en la misma pregunta), enmarcado como lo que hace falta para FINALIZAR lo que el cliente ya aceptó (ej.: "Perfecto, para coordinarle la prueba de manejo, ¿me regala su nombre y teléfono?") — nunca lo pidas como un paso aislado sin conexión a lo que ya aceptó.
-- Pide consentimiento explícito y específico para SMS antes de continuar — usa esta frase o una muy similar: "¿Me autoriza a enviarle mensajes de texto (SMS) a este número sobre su cita, disponibilidad del vehículo y seguimiento? Pueden aplicar tarifas de mensajes y datos. Puede responder STOP en cualquier momento para cancelar." El cliente debe responder afirmativamente antes de marcar consentimiento como verdadero.
-- En cuanto tengas: nombre + vehículo + teléfono + consentimiento → incluye LEAD_DATA al final de ese mensaje (esto es lo único que activa el registro del lead).
-- LEAD_DATA: {"nombre":"...","telefono":"...","vehiculoInteres":"...","metodoPago":"Cash/Financiado si ya se mencionó, si no dejar vacío","consentimiento":"Si","eventType":"nuevo_lead"}
-- REGLA DE SEGURIDAD: nunca avances a coordinar día/hora (FASE 3.5) sin tener nombre y teléfono completos primero — sin esos datos no hay forma de contactarle ni confirmar nada.
+FASE 3 — IDENTIDAD, CONTACTO Y SOLICITUD DE CONSENTIMIENTO SMS:
+- Pide nombre, teléfono, correo electrónico (email) y OBLIGATORIAMENTE la autorización explícita para SMS/seguimiento si aún no la tienes.
+- Pide la autorización usando esta frase exacta o equivalente: "¿Me autoriza a enviarle mensajes de texto (SMS) a este número sobre su cita, disponibilidad del vehículo y seguimiento? Pueden aplicar tarifas de mensajes y datos. Puede responder STOP en cualquier momento para cancelar."
+- REGLA CRÍTICA DE SEPARACIÓN Y CONSENTIMIENTO:
+  1. NUNCA confirmes la cita (NO digas "queda confirmada su cita" ni emitas CITA_CONFIRMADA) en el mismo turno en que estás pidiendo la autorización SMS.
+  2. NUNCA asumas consentimiento ("Si") mientras esperas respuesta. Mientras el cliente no haya contestado explícitamente la pregunta de autorización, el valor de "consentimiento" en LEAD_DATA DEBE ser "No".
+  3. En el turno donde pides el consentimiento o recibes el teléfono/email, emite LEAD_DATA con "consentimiento":"No", "email":"..." y DETENTE a esperar la respuesta del cliente.
 
-FASE 3.5 — COORDINANDO EL DÍA Y HORA (ya tienes nombre y teléfono, y el cliente quiere la prueba de manejo, pero AÚN no ha dado día y hora específicos):
-- Recuerda el horario real (lunes a sábado 9am-6pm, cerrado domingos) al proponer u ofrecer días — nunca sugieras ni confirmes un domingo. Si el cliente propone domingo, dile con naturalidad que ese día está cerrado y ofrece la alternativa más cercana (ej. sábado o lunes).
-- NUNCA te quedes repitiendo "¿le gustaría coordinar una prueba de manejo?" una vez el cliente ya dijo que sí — eso es un error grave, ya contestó, avanza.
-- En cuanto el cliente confirme interés (aunque sea con un simple "sí"), tu SIGUIENTE mensaje debe preguntar concretamente por el día y la hora — ofrece opciones para facilitar la respuesta (ej.: "Perfecto, ¿le viene mejor mañana en la mañana o en la tarde?" o "¿Qué día de esta semana se le hace más fácil pasar?").
-- Si el cliente da un día pero no hora (o viceversa), pregunta específicamente por lo que falta — nunca asumas la hora ni el día.
-- Solo cuando tengas AMBOS (día Y hora exactos) pasas a FASE 4.
+FASE 3.5 — COORDINANDO DÍA/HORA E INTENCIÓN DE CITA (ACTUALIZACIÓN CONTINUA EN TIEMPO REAL):
+- Recuerda el horario real (lunes a sábado 9am-6pm, cerrado domingos) al proponer u ofrecer días.
+- REGLA DE SOBRERESERVA (DOUBLE BOOKING PERMITIDO): En GT Auto Imports PERMITIMOS MÚLTIPLES CITAS A LA MISMA HORA (Double Booking) porque contamos con múltiples vendedores y especialistas en el concesionario. NUNCA rechaces ni pongas objeciones a una fecha u hora propuesta por el cliente alegando que el horario está ocupado o lleno. SIEMPRE acepta la hora elegida por el cliente (lunes a sábado de 9am a 6pm).
+- REGLA DE EDICIÓN Y ACTUALIZACIÓN CONTINUA: Conforme el cliente hable de la intención de cita, días, horas preferidas, pronto o trade-in, INCLUYE SIEMPRE un tag LEAD_DATA actualizado en cada turno con la información más reciente ("fecha_cita", "notas", "email", "tienePronto", "tieneTradeIn", etc., con "consentimiento":"No" si aún no responde la autorización) y "eventType":"actualizacion" o "intencion_cita".
 
-FASE 4 — CITA CONFIRMADA, EJECUTAR EL EVENTO (el cliente confirmó día Y hora exactos en este turno para la prueba de manejo):
-- Confirma la cita y comunica los documentos requeridos: Licencia de conducir (o acompañante con licencia válida), Tarjeta de Seguro Social, comprobante de residencia (factura de agua, luz, o lease agreement), y comprobante de ingreso (W2/talonarios si es empleado, o planillas y registro de comerciante si tiene negocio propio).
-- SOLO agenda cuando el cliente te dio día Y hora específicos — nunca asumas ni inventes.
-- OBLIGATORIO incluir AMBOS tags al final del mensaje en este turno, en este orden:
-  1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto o método de pago]|[Vehículo]|[Fecha y hora en formato ESTRICTO YYYY-MM-DD HH:MM]|[Notas breves]
-  2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", y "fecha_cita" con el formato ESTRICTO YYYY-MM-DD HH:MM.
+FASE 4 — RESPUESTA DE CONSENTIMIENTO Y CONFIRMACIÓN FINAL DE CITA:
+- Esta fase SOLO se activa en el turno POSTERIOR a que le hayas preguntado al cliente por la autorización SMS y el cliente haya respondido a dicha pregunta, teniendo ya día Y hora exactos acordados.
+- MANEJO DE LA RESPUESTA DEL CLIENTE:
+  * Si el cliente responde afirmativamente ("Sí", "Autorizo", "Acepto", "De acuerdo", "Está bien", "Dale"): cambia "consentimiento" a "Si".
+  * Si el cliente responde negativamente ("No", "No quiero spam", "Prefiero que no"): mantén "consentimiento" a "No" y asegúrale amablemente que no recibirá mensajes no deseados ni spam por SMS.
+- CONFIRMACIÓN DE CITA: Una vez recibida la respuesta (sea Sí o No), confirma la cita con calidez y comunica los documentos requeridos (Licencia de conducir, Seguro Social, comprobante de residencia, comprobante de ingresos).
+- OBLIGATORIO incluir AMBOS tags al final del mensaje en este turno:
+  1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto o método de pago]|[Vehículo]|[Fecha y hora exacta acordada]|[Notas breves]
+  2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", "fecha_cita":[Fecha y hora], "email":"[Correo]", y "consentimiento":("Si" o "No" según haya respondido).
 - El tag CITA_CONFIRMADA es el que activa que la cita se agende de verdad (crea el evento en Calendar) — inclúyelo únicamente al momento de confirmar la cita por primera vez.
 
 FASE 5 — CITA YA CONFIRMADA EN HISTORIAL (POST-CONFIRMACIÓN Y ATENCIÓN CONTINUA):
 - Aplica si en el historial de la conversación la cita YA FUE CONFIRMADA previamente (ya existe una confirmación previa de fecha y hora).
 - La cita ya está registrada en el sistema. NUNCA vuelvas a ofrecer agendar una cita nueva ni preguntes "¿Qué día o a qué hora le gustaría venir?".
 - Si el cliente te agradece ("gracias", "ok", "nos vemos"), se despide o hace preguntas adicionales: responde con amabilidad, confirma que su cita está lista para la fecha/hora acordada, recuérdale con cortesía los documentos (licencia, seguro social, comprobante de residencia, comprobante de ingresos) y la dirección (PR-2 km 26.1, Dorado, PR 00646).
-- NO vuelvas a incluir el tag CITA_CONFIRMADA ni LEAD_DATA en los mensajes posteriores, A MENOS que el cliente pida explícitamente CAMBIAR o REPROGRAMAR la fecha u hora de la cita.
+- Si el cliente pide CAMBIAR o REPROGRAMAR la fecha u hora o agrega notas adicionales, emite un tag LEAD_DATA actualizado con los nuevos datos y "eventType":"actualizacion".
 
 === REGLA DE FORMATO INQUEBRANTABLE ===
 TODO mensaje tuyo, sin excepción, DEBE empezar con al menos una oración conversacional en español dirigida al cliente — nunca respondas SOLO con tags (LEAD_DATA, HANDOFF_URGENTE, MOSTRAR_VEHICULO, CITA_CONFIRMADA). Los tags son metadata que va DESPUÉS del texto humano, nunca en su lugar. Si en algún momento estás por generar una respuesta que sería solo tags sin nada de texto, DETENTE y agrega primero la oración que le explique algo al cliente — esto aplica siempre, sin excepción, incluso cuando actives el fast-track de LEAD_DATA por fotos u otro motivo.
@@ -134,7 +140,7 @@ En los 3 casos: sigue conversando de forma natural y útil, pero NO cierres tú 
 
 === FORMATO DE SALIDA ===
 - Si muestras un vehículo específico (con foto incluida automáticamente): MOSTRAR_VEHICULO: [Year] [Make] [Model]
-- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[YYYY-MM-DD HH:MM]|[Notes]
+- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date]|[Notes]
 - Si detectas handoff urgente: HANDOFF_URGENTE: Si
 - SIEMPRE incluye, al final de cada respuesta: NUDGES: [pregunta1]|[pregunta2]|[pregunta3]
   IMPORTANTE: esto es metadata OCULTA que el cliente nunca ve — no cuenta como parte de tu respuesta visible ni contradice las reglas de "da espacio para respirar" o "una sola pregunta por mensaje", que aplican solo al texto que el cliente sí lee. NUDGES son 3 preguntas o comentarios cortos, DISTINTOS entre sí, que el sistema usa automáticamente SOLO si el cliente se queda callado varios segundos — no algo que tú decidas mostrar. Deben basarse en lo que ya sabes de este cliente en este momento (vehículo que le interesa, si mencionó presupuesto, en qué fase está) — nunca genéricos tipo "¿sigue ahí?". Ejemplos de ángulos distintos: uno sobre el vehículo/specs, uno sobre financiamiento o precio, uno empujando hacia la prueba de manejo o la cita. Cada vez que respondas, regenera estas 3 variaciones frescas según el contexto más reciente — nunca reutilices las mismas de un mensaje anterior.
@@ -148,6 +154,11 @@ Responde directamente al cliente como Camilo.`;
 // para la limpieza real que hacen App.tsx / twilioAgent.ts por su cuenta.
 function hasVisibleText(raw: string): boolean {
   const stripped = raw
+    .replace(/CITA_CONFIRMADA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
     .replace(/CITA_CONFIRMADA:.*$/gm, "")
     .replace(/HANDOFF_URGENTE:.*$/gm, "")
     .replace(/NUDGES:.*$/gm, "")
@@ -166,11 +177,48 @@ export async function processCamiloMessage(
 
   const inventoryText = (context.inventory || [])
     .slice(0, 50)
-    .map((v: any) => `${v.year} ${v.make} ${v.model} $${v.price}`)
+    .map((v: any) => {
+      const year = v.year || v.Año || "";
+      const make = v.make || v.Marca || "";
+      const model = v.model || v.Modelo || "";
+      const price = v.price || v.Precio || "";
+      const engine = v.engine || v["Motor/hp"] || v.motor || "";
+      const mileage = v.mileage || v.Millaje || "";
+      const trans = v.transmission || v.Transmisión || "";
+      const img = v.image || v.FotoUrl || v.FotoWeblink || "";
+      return `- ${year} ${make} ${model} | Precio: $${price} | Motor: ${engine || 'N/A'} | Millas: ${mileage} | Trans: ${trans}${img ? ` | Foto: [FOTO](${img})` : ''}`;
+    })
     .join("\n");
 
-  const historyLog = (context.history || [])
-    .map((m: any) => `${m.role}: ${m.content}`)
+  const rawHistory = context.history || [];
+  // Keep up to 50 recent turns of history so long conversations retain context without blowing prompt limits
+  const recentHistory = rawHistory.length > 50 ? rawHistory.slice(-50) : rawHistory;
+
+  const historyLog = recentHistory
+    .map((m: any) => {
+      const isAssistant = m.role === 'model' || m.role === 'assistant';
+      const roleStr = isAssistant ? 'Camilo' : 'Cliente';
+      let contentStr = '';
+      if (typeof m.content === 'string') {
+        contentStr = m.content;
+      } else if (Array.isArray(m.parts)) {
+        contentStr = m.parts.map((p: any) => p ? (typeof p === 'string' ? p : p.text || '') : '').join(' ');
+      }
+      const cleanText = contentStr
+        .replace(/CITA_CONFIRMADA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/CITA_CONFIRMADA:.*$/gm, "")
+        .replace(/HANDOFF_URGENTE:.*$/gm, "")
+        .replace(/NUDGES:.*$/gm, "")
+        .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
+        .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
+        .trim();
+      return `${roleStr}: ${cleanText}`;
+    })
+    .filter((line: string) => line.length > 8 && !line.endsWith(":"))
     .join("\n");
 
   const buildUserPrompt = (retryNudge?: string) => `Historial de la conversación:
@@ -182,50 +230,89 @@ ${inventoryText}
 Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}` : ""}`;
 
   async function callClaude(userPrompt: string): Promise<string> {
-    const msg = await anthropic!.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }]
-    });
-    return msg.content[0].type === "text" ? msg.content[0].text : "";
+    const modelsToTry = [
+      "claude-sonnet-5",
+      "claude-3-7-sonnet-latest",
+      "claude-3-5-sonnet-20241022",
+      "claude-3-5-haiku-20241022",
+      "claude-3-haiku-20240307"
+    ];
+    let lastErr: any = null;
+    for (const m of modelsToTry) {
+      try {
+        const msg = await anthropic!.messages.create({
+          model: m,
+          max_tokens: 3072,
+          system: systemPrompt,
+          messages: [{ role: "user", content: userPrompt }]
+        });
+        const fullText = msg.content
+          .filter((b: any) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("");
+        if (fullText) return fullText;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr;
   }
 
   try {
+    let response = "";
+
+    // 1. Intentar primero con Claude (claude-sonnet-5) si está disponible
     if (anthropic) {
-      console.log("[Camilo] Usando Claude (llamada única)...");
-      let response = await callClaude(buildUserPrompt());
-
-      // Red de seguridad: si la respuesta quedo sin texto visible (solo
-      // tags), reintenta UNA vez con un recordatorio explicito, antes de
-      // rendirse. Esto no debe pasar seguido -- si pasa mucho, es señal de
-      // que el prompt necesita ajuste, no solo el retry.
-      if (!hasVisibleText(response)) {
-        console.error("[Camilo] Respuesta sin texto visible, reintentando una vez...");
-        response = await callClaude(
-          buildUserPrompt("(Tu respuesta anterior no tuvo ninguna oración visible para el cliente, solo tags. Responde de nuevo, esta vez con al menos una oración conversacional natural antes de cualquier tag.)")
-        );
+      try {
+        console.log("[Camilo] Procesando mensaje con Claude (claude-sonnet-5)...");
+        response = await callClaude(buildUserPrompt());
+      } catch (claudeErr: any) {
+        console.warn("[Camilo] Claude no estuvo disponible, intentando Gemini como fallback...", claudeErr?.message || claudeErr);
+        response = "";
       }
-
-      return response;
     }
 
-    if (gemini) {
-      console.log("[Camilo] Usando Gemini 2.5 Flash (Claude no configurado)...");
-      const response = await gemini.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: buildUserPrompt(),
-        config: { systemInstruction: systemPrompt }
-      });
-      return (
-        response.text ||
-        "Lo siento, estoy teniendo problemas de conexión. ¿Podrías intentar nuevamente?"
-      );
+    // 2. Fallback a Gemini si Claude no estuvo disponible o falló
+    if (!response && gemini) {
+      console.log("[Camilo] Intentando fallback con Gemini Flash...");
+      const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
+      for (const gm of geminiModels) {
+        try {
+          const genRes = await gemini.models.generateContent({
+            model: gm,
+            contents: buildUserPrompt(),
+            config: { systemInstruction: systemPrompt }
+          });
+          if (genRes.text) {
+            response = genRes.text;
+            console.log(`[Camilo] Respuesta generada exitosamente con ${gm}`);
+            break;
+          }
+        } catch (gmErr: any) {
+          const errMsg = gmErr?.message || String(gmErr);
+          if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota")) {
+            console.warn(`[Camilo] Gemini model ${gm} cuota/límite alcanzado (429).`);
+          } else {
+            console.warn(`[Camilo] Gemini model ${gm} falló:`, errMsg);
+          }
+        }
+      }
     }
 
-    throw new Error(
-      "Ningún proveedor de IA configurado (falta ANTHROPIC_API_KEY y GEMINI_API_KEY)"
-    );
+    if (!response) {
+      response = "¡Excelente! Con gusto le atiendo en GT Auto Imports. ¿En qué vehículo está interesado o qué pregunta tiene sobre nuestro inventario?";
+    }
+
+    // Garantía absoluta de texto conversacional para el cliente si solo se generaron tags
+    if (!hasVisibleText(response)) {
+      if (response.includes("CITA_CONFIRMADA:")) {
+        response = "¡Perfecto! Su cita en GT Auto Imports ha quedado agendada exitosamente. Le esperamos en PR-2 km 26.1, Dorado, PR 00646. Recuerde traer su licencia de conducir, tarjeta de seguro social, comprobante de residencia y comprobante de ingresos.\n\n" + response;
+      } else {
+        response = "¡Con mucho gusto le asisto en GT Auto Imports! ¿En qué más le puedo ayudar hoy?\n\n" + response;
+      }
+    }
+
+    return response;
   } catch (error: any) {
     console.error("[Camilo] Error principal de IA, intentando Gemini como fallback:", error);
     if (gemini) {
@@ -244,6 +331,7 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
       }
     }
     const msg = error?.message || String(error);
-    return `[System Error] Claude failed with: ${msg}. If you are testing this on the Shared App URL, please 'Share' the app again to deploy the latest code (which uses a working Claude model), or test in the Dev preview.`;
+    console.error("[Camilo] All AI calls failed:", msg);
+    return "¡Hola! Con gusto le atiendo en GT Auto Imports. En este momento tenemos una alta demanda de consultas, pero con gusto le comunico con un especialista. ¿En qué vehículo está interesado o qué fecha le gustaría pasar a vernos?";
   }
 }

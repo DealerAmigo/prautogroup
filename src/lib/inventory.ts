@@ -834,11 +834,11 @@ export async function getInventory(forceRefresh?: boolean): Promise<Vehicle[]> {
           const disp = String(dispRaw || "").toLowerCase().trim();
           
           // Handle slugified special chars
-          const transmission = String(getVal(["transmision", "transmisin", "transmission"]) || "");
-          const drive = String(getVal(["traccion", "traccin", "drive"]) || "");
+          const transmission = String(getVal(["transmision", "transmisin", "transmission", "transmisión"]) || "");
+          const drive = String(getVal(["traccion", "traccin", "drive", "tracción"]) || "");
           const extColor = String(getVal(["color", "color_exterior", "exterior"]) || "");
           const intColor = String(getVal(["color_interior", "interior"]) || "");
-          const motor = String(getVal(["motor"]) || "");
+          const motor = String(getVal(["motor", "motorhp", "motor_hp", "engine", "motorización", "motorizacion", "cilindros", "cilindrada", "tipo_de_motor"]) || "");
 
           const rawMileage = getVal(["millaje", "mileage", "millas", "millaje_o_km"]);
           let mileage = "0 mi";

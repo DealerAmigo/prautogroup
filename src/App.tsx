@@ -525,6 +525,23 @@ export default function App() {
          responseText = responseText.replace(/MOSTRAR_VEHICULO:.*$/m, '').replace(/MOSTRAR_VEHICULO:.*/s, '').trim();
       }
 
+      // Final fail-safe cleanup: remove any remaining metadata tags and internal thoughts before displaying to user
+      responseText = responseText
+        .replace(/^(?:El cliente|Notas|Análisis|Pensamiento|Razonamiento|FASE \d|Internal Note)[\s\S]*?\n\n/i, "")
+        .replace(/^El cliente (?:todavía|aún) no [\s\S]*?\n+/i, "")
+        .replace(/CITA_CONFIRMADA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/CITA_CONFIRMADA:.*$/gm, "")
+        .replace(/HANDOFF_URGENTE:.*$/gm, "")
+        .replace(/NUDGES:.*$/gm, "")
+        .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
+        .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
+        .replace(/LEAD_DATA:.*$/gm, "")
+        .trim();
+
       // 1. Process appointment if confirmed
       if (citaDataStr) {
         botIntent = 'Cita Confirmada';
@@ -543,26 +560,12 @@ export default function App() {
             appointmentDate = fields[4] || ''; // Fallback
           }
           
-          if (appointmentDate) {
-            const dateParts = appointmentDate.split(' ');
-            if (dateParts.length >= 2) {
-              const dateStr = dateParts[0];
-              const timeStr = dateParts.slice(1).join(' ');
-              createCalendarEvent({
-                customerName: fields[0] || 'Cliente Web',
-                date: dateStr,
-                time: timeStr,
-                phone: fields[1] || '',
-                interest: fields[3] || 'Consulta General'
-              }).catch(err => console.error("Error background calendar event:", err));
-            }
-          }
-          
           saveLead({
             nombre: fields[0] || '',
             telefono: fields[1] || '',
             presupuesto_mensual: fields[2] || '',
             vehiculo_interes: fields[3] || '',
+            agendo_cita: true,
             fecha_cita: appointmentDate,
             notas: appointmentNotes,
             type: 'ai_appointment_confirmation',
@@ -570,34 +573,43 @@ export default function App() {
             fullText: responseText,
             conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
           });
+
+          // Crear el evento de calendario explícitamente al confirmar cita
+          createCalendarEvent({
+            customerName: fields[0] || 'Cliente GT Auto Imports',
+            date: appointmentDate,
+            time: appointmentDate,
+            interest: fields[3] || 'Consulta / Test Drive',
+            phone: fields[1] || ''
+          }).catch(err => console.warn("[Calendar] Direct creation skipped/failed:", err));
+
           leadEventTypeRef.current = 'actualizacion';
         } catch (e) {
           console.error("Error parsing CITA_CONFIRMADA data:", e);
         }
       }
 
-      // 2. Process lead data capture (debounced 60s tras el último mensaje)
+      // 2. Process lead data capture (instantáneuamente al capturar/actualizar datos)
       if (leadDataObj) {
         if (!botIntent) {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';
         }
-        const eventTypeAtCapture = leadEventTypeRef.current;
+        const eventTypeAtCapture = leadDataObj.eventType || leadEventTypeRef.current || 'nuevo_lead';
         const historySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
 
         if (leadSaveTimerRef.current) {
           clearTimeout(leadSaveTimerRef.current);
-        }
-        leadSaveTimerRef.current = setTimeout(() => {
-          saveLead({
-            ...leadDataObj,
-            type: 'ai_lead_capture',
-            eventType: eventTypeAtCapture,
-            fullText: responseText,
-            conversationHistory: historySnapshot
-          });
           leadSaveTimerRef.current = null;
-        }, 60000);
+        }
+
+        saveLead({
+          ...leadDataObj,
+          type: 'ai_lead_capture',
+          eventType: eventTypeAtCapture,
+          fullText: responseText,
+          conversationHistory: historySnapshot
+        });
 
         leadEventTypeRef.current = 'actualizacion';
       }
@@ -1058,7 +1070,7 @@ export default function App() {
               <img 
                 src="https://gtautopr.com/wp-content/uploads/2024/10/logo_2576e84d24261a5b737ba93c581c5493-e1729735728852.png" 
                 alt="GT Auto Imports" 
-                className="h-[120px] md:h-[168px] w-auto object-contain select-none"
+                className="h-[70px] md:h-[90px] w-auto object-contain select-none transition-all duration-300"
                 referrerPolicy="no-referrer"
               />
             </div>
@@ -1615,6 +1627,17 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
           )}>
             <ReactMarkdown
               components={{
+                a: ({ href, children }) => (
+                  <a 
+                    href={href} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black px-4 py-2.5 my-2 rounded-xl text-sm md:text-base transition-all shadow-lg hover:shadow-emerald-500/30 no-underline cursor-pointer border border-emerald-400/30 active:scale-95"
+                  >
+                    <span>{children}</span>
+                    <span className="text-xs">↗</span>
+                  </a>
+                ),
                 img: ({ src, alt }) => (
                   <span 
                     className="block my-6 rounded-2xl overflow-hidden border border-white/10 shadow-2xl cursor-pointer hover:border-sky-500/50 transition-all group relative max-w-sm"
@@ -1647,6 +1670,37 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
           </div>
         )}
       </div>
+
+      {isBot && (
+        message.content.includes("pre-aprobacion") || 
+        message.content.includes("pre-aprobación") || 
+        message.content.includes("gtautopr.com/pre-aprobacion")
+      ) && (
+        <div className="w-full mt-2 max-w-sm">
+          <motion.button
+            onClick={() => window.open('https://gtautopr.com/pre-aprobacion/', '_blank')}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="w-full relative group overflow-hidden rounded-2xl p-[2px] bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 shadow-[0_10px_30px_rgba(16,185,129,0.3)] hover:shadow-[0_15px_40px_rgba(16,185,129,0.5)] transition-all cursor-pointer text-left"
+          >
+            <div className="bg-[#0b0f14] hover:bg-[#111822] transition-colors rounded-[14px] p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform shrink-0">
+                  <ShieldCheck size={22} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 leading-none mb-1">Pre-Aprobación Express</span>
+                  <span className="text-xs md:text-sm font-black text-white uppercase italic tracking-tighter leading-tight">Completar Solicitud</span>
+                </div>
+              </div>
+              <div className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] uppercase tracking-wider px-3.5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0 shadow-lg group-hover:translate-x-0.5">
+                <span>SOLICITAR</span>
+                <span>→</span>
+              </div>
+            </div>
+          </motion.button>
+        </div>
+      )}
 
       {isBot && message.isBookingForm && (
         <div className="w-full mt-2">
@@ -1863,7 +1917,7 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
             <Settings2 size={12} className="text-sky-400 shrink-0" />
             <div className="flex flex-col overflow-hidden">
               <span className="text-[9px] md:text-[10px] uppercase font-round font-bold text-zinc-300 leading-none mb-0.5 md:mb-1">Motor</span>
-              <span className="text-xs md:text-sm uppercase font-black text-zinc-100 tracking-wider font-mono truncate">{vehicle.engine || 'V6'}</span>
+              <span className="text-xs md:text-sm uppercase font-black text-zinc-100 tracking-wider font-mono truncate">{vehicle.engine || 'N/A'}</span>
             </div>
           </div>
           <div className="flex items-center gap-2 md:gap-3 bg-white/5 p-2 md:p-3 rounded-xl md:rounded-2xl border border-white/5">

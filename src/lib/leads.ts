@@ -44,28 +44,27 @@ export async function saveLead(leadData: any) {
       await appendLeadToSheet(data, token).catch(e => console.error("Error appending directly to Sheet:", e));
       
       // B. Si es una cita, crear evento en Google Calendar y notificar al cliente por Gmail
-      const isAppointment = ['appointment', 'ai_appointment_confirmation', 'appointment_booking_form'].includes(data.type);
+      const isAppointment =
+        data.agendo_cita === true ||
+        !!data.fecha_cita ||
+        data.eventType === 'cita_confirmada' ||
+        ['appointment', 'ai_appointment_confirmation', 'appointment_booking_form'].includes(data.type);
+
       if (isAppointment) {
         // Formatear notas para el calendario
-        const interestStr = data.vehicleInterest || data.vehiculo_interes || data.vehicle || data.notes || 'Consulta General';
+        const interestStr = data.vehicleInterest || data.vehiculo_interes || data.vehiculoInteres || data.vehicle || data.notes || data.notas || 'Consulta General';
         
         // Obtener fecha y hora de la cita
-        let appointmentDate = data.appointmentDate || data.fecha_cita || '';
-        let datePart = data.date || '';
-        let timePart = data.time || '10:00'; // Default time
-        
-        // Tratar de parsear fecha y hora
-        if (appointmentDate && appointmentDate.includes(' ')) {
-          const parts = appointmentDate.split(' ');
-          if (parts[0] && parts[0].includes('-')) datePart = parts[0];
-          if (parts[1]) timePart = parts[1];
-        } else if (appointmentDate && appointmentDate.includes('-')) {
-          datePart = appointmentDate;
-        }
+        let appointmentDate = data.appointmentDate || data.fecha_cita || data.date || '';
+        let datePart = appointmentDate;
+        let timePart = data.time || '';
 
-        if (!datePart) {
-          // Si no hay fecha en formato YYYY-MM-DD, usar hoy o la provista
-          datePart = new Date().toISOString().split('T')[0];
+        if (appointmentDate && (appointmentDate.includes(' ') || appointmentDate.includes('T'))) {
+          const parts = appointmentDate.replace('T', ' ').split(' ');
+          datePart = parts[0];
+          if (!timePart && parts[1]) {
+            timePart = parts.slice(1).join(' ');
+          }
         }
 
         // Crear evento en Google Calendar

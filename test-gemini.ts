@@ -1,14 +1,27 @@
 import { GoogleGenAI } from "@google/genai";
-import { config } from "dotenv";
-config();
-
 const geminiKey = process.env.GEMINI_API_KEY;
-if (geminiKey) {
-  const gemini = new GoogleGenAI({ apiKey: geminiKey });
-  gemini.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: "Hola, responde OK"
-  }).then(res => console.log("GEMINI SUCCESS:", res.text)).catch(e => console.error("GEMINI FAILED:", e.message));
-} else {
-  console.log("No GEMINI_API_KEY");
+const gemini = geminiKey ? new GoogleGenAI({ apiKey: geminiKey }) : null;
+
+async function testGeminiModel(model: string) {
+  if (!gemini) {
+    console.log("No GEMINI_API_KEY");
+    return;
+  }
+  try {
+    const res = await gemini.models.generateContent({
+      model,
+      contents: "hi"
+    });
+    console.log(`GEMINI SUCCESS: ${model} -> ${res.text?.substring(0, 30)}`);
+  } catch (e: any) {
+    console.log(`GEMINI FAILED: ${model} -> ${e.message}`);
+  }
 }
+
+async function main() {
+  await testGeminiModel("gemini-2.0-flash");
+  await testGeminiModel("gemini-1.5-flash");
+  await testGeminiModel("gemini-2.5-flash");
+}
+
+main();

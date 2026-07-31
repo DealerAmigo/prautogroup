@@ -5,12 +5,19 @@ import { Vehicle } from "../types";
 // crudo como si fuera parte de la conversación real. Esto es justo lo que
 // estaba envenenando el contexto en conversaciones largas.
 function stripTagsForHistory(raw: string): string {
+  if (!raw) return "";
   return raw
+    .replace(/CITA_CONFIRMADA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
     .replace(/CITA_CONFIRMADA:.*$/gm, "")
     .replace(/HANDOFF_URGENTE:.*$/gm, "")
     .replace(/NUDGES:.*$/gm, "")
     .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
     .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
+    .replace(/LEAD_DATA:.*$/gm, "")
     .trim();
 }
 

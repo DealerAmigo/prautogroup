@@ -20,6 +20,7 @@
 
 import { Router } from "express";
 import { processCamiloMessage } from "./ai/ai";
+import { createCalendarEvent } from "./src/lib/calendar";
 
 const router = Router();
 
@@ -42,7 +43,8 @@ async function loadHistory(phone: string): Promise<ChatTurn[]> {
     const response = await fetch(leadsScriptUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "getSession", _token: proxyKey, proxyKey, telefono: phone })
+      body: JSON.stringify({ action: "getSession", _token: proxyKey, proxyKey, telefono: phone }),
+      signal: AbortSignal.timeout(10000)
     });
     const data = await response.json();
     return Array.isArray(data.history) ? data.history : [];
@@ -61,7 +63,8 @@ async function persistHistory(phone: string, history: ChatTurn[]): Promise<void>
     await fetch(leadsScriptUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "saveSession", _token: proxyKey, proxyKey, telefono: phone, history })
+      body: JSON.stringify({ action: "saveSession", _token: proxyKey, proxyKey, telefono: phone, history }),
+      signal: AbortSignal.timeout(10000)
     });
   } catch (err) {
     console.error("[TwilioAgent] Error guardando historial en GAS:", err);
@@ -83,10 +86,10 @@ async function fetchInventory(): Promise<any[]> {
   const inventoryUrl = process.env.INVENTORY_SCRIPT_URL;
   if (!inventoryUrl) return [];
   try {
-    const response = await fetch(inventoryUrl);
-    if (!response.ok) return [];
+    const response = await fetch(inventoryUrl, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) return inventoryCache ? inventoryCache.data : [];
     const data = await response.json();
-    const list = Array.isArray(data) ? data : data.vehicles || [];
+    const list = Array.isArray(data) ? data : (data.data || data.inventario || data.vehicles || []);
     inventoryCache = { data: list, ts: now };
     return list;
   } catch (err) {
@@ -134,6 +137,23 @@ function extractTags(rawText: string) {
     text = text.replace(/MOSTRAR_VEHICULO:.*$/m, "").trim();
   }
 
+  // Final fail-safe cleanup: strip any remaining internal tags and thoughts from SMS body
+  text = text
+    .replace(/^(?:El cliente|Notas|Análisis|Pensamiento|Razonamiento|FASE \d|Internal Note)[\s\S]*?\n\n/i, "")
+    .replace(/^El cliente (?:todavía|aún) no [\s\S]*?\n+/i, "")
+    .replace(/CITA_CONFIRMADA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/CITA_CONFIRMADA:.*$/gm, "")
+    .replace(/HANDOFF_URGENTE:.*$/gm, "")
+    .replace(/NUDGES:.*$/gm, "")
+    .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
+    .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
+    .replace(/LEAD_DATA:.*$/gm, "")
+    .trim();
+
   return { text, leadData, citaConfirmada, handoffUrgente };
 }
 
@@ -149,6 +169,36 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     return;
   }
   const proxyKey = process.env.PROXY_KEY || process.env.APPS_SCRIPT_TOKEN || "test_token";
+
+  // Normalize consent to exact string expected by GAS ("Si" / "No")
+  const rawConsent = lead.consentimiento;
+  let consentVal = "No";
+  if (rawConsent === true || rawConsent === "Si" || rawConsent === "si" || rawConsent === "Sí" || rawConsent === "true" || rawConsent === "1") {
+    consentVal = "Si";
+  } else if (rawConsent === false || rawConsent === "No" || rawConsent === "no" || rawConsent === "false" || rawConsent === "0") {
+    consentVal = "No";
+  } else if (typeof rawConsent === "string" && rawConsent.trim()) {
+    consentVal = rawConsent;
+  }
+
+  const fechaCitaVal = lead.fecha_cita || "";
+  const isAgendoCita =
+    lead.agendo_cita === true ||
+    lead.agendo_cita === "Si" ||
+    lead.agendo_cita === "Sí" ||
+    lead.agendo_cita === "si" ||
+    lead.agendo_cita === "sí" ||
+    lead.eventType === "cita_confirmada" ||
+    Boolean(fechaCitaVal && fechaCitaVal.trim() !== "");
+
+  const agendoCitaVal = isAgendoCita ? "Si" : "No";
+
+  let fuenteVal = lead.fuente || "missed_call";
+  if (fuenteVal === "missed_call_sms") {
+    fuenteVal = "missed_call";
+  } else if (fuenteVal === "web_chat" || fuenteVal === "chat") {
+    fuenteVal = "Web Chat";
+  }
 
   const payload = {
     action: "saveLead",
@@ -168,14 +218,15 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     tradeMarca: lead.tradeMarca || "",
     tradeModelo: lead.tradeModelo || "",
     estadoTrade: lead.estadoTrade || "",
-    consentimiento: lead.consentimiento !== undefined ? lead.consentimiento : true,
+    consentimiento: consentVal,
     resumenIA: lead.resumenIA || "",
-    fuente: lead.fuente || "missed_call",
-    agendo_cita: lead.agendo_cita || false,
-    fecha_cita: lead.fecha_cita || "",
+    fuente: fuenteVal,
+    agendo_cita: agendoCitaVal,
+    fecha_cita: fechaCitaVal,
     notas: lead.notas || "",
     eventType: lead.eventType || "nuevo_lead",
     metodoPago: lead.metodoPago || "",
+    calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com",
     handoffUrgente: lead.handoffUrgente || false,
     conversationHistory: lead.conversationHistory || []
   };
@@ -184,7 +235,8 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     const gasResponse = await fetch(leadsScriptUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
     });
     const gasData = await gasResponse.text();
     console.log("[TwilioAgent] GAS Response:", gasData);
@@ -215,7 +267,8 @@ async function logChatTurn(userMessage: string, botReply: string): Promise<void>
     await fetch(leadsScriptUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "logChat", _token: proxyKey, proxyKey, sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0", userMessage, botReply })
+      body: JSON.stringify({ action: "logChat", _token: proxyKey, proxyKey, sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0", userMessage, botReply }),
+      signal: AbortSignal.timeout(10000)
     });
   } catch (err) {
     console.error("[TwilioAgent] Error guardando chat log de auditoria:", err);
@@ -326,6 +379,20 @@ router.post("/sms", async (req, res) => {
         resumenIA: text,
         conversationHistory: history
       });
+
+      if (citaConfirmada) {
+        try {
+          await createCalendarEvent({
+            customerName: parts[0] || leadData?.nombre || 'Cliente Twilio',
+            date: parts[4] || leadData?.fecha_cita || '',
+            time: parts[4] || leadData?.fecha_cita || '',
+            interest: parts[3] || leadData?.vehiculoInteres || 'Consulta / Test Drive',
+            phone: from
+          });
+        } catch (calErr) {
+          console.warn("[TwilioAgent] Error creando evento en Google Calendar:", calErr);
+        }
+      }
     }
 
     // Log de auditoria del turno -- antes de responder, mismo motivo que

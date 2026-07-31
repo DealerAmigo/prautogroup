@@ -34,23 +34,41 @@ async function startServer() {
    * Frontend NO cambia
    */
   
+let serverInventoryCache: { data: any; ts: number } | null = null;
+const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
+
   app.get("/api/inventory", async (req, res) => {
     try {
+      const bypass = req.query.bypass === "true";
+      const now = Date.now();
+      if (!bypass && serverInventoryCache && (now - serverInventoryCache.ts < INVENTORY_CACHE_MS)) {
+        return res.json(serverInventoryCache.data);
+      }
+
       const inventoryUrl = process.env.INVENTORY_SCRIPT_URL;
       if (!inventoryUrl) {
+        if (serverInventoryCache) return res.json(serverInventoryCache.data);
         throw new Error("INVENTORY_SCRIPT_URL environment variable is missing.");
       }
       
-      const response = await fetch(inventoryUrl);
+      const response = await fetch(inventoryUrl, {
+        signal: AbortSignal.timeout(10000)
+      });
+      
       if (!response.ok) {
-        throw new Error("Failed to fetch inventory from Google Script");
+        throw new Error(`Failed to fetch inventory from Google Script: status ${response.status}`);
       }
       
       const data = await response.json();
+      serverInventoryCache = { data, ts: now };
       return res.json(data);
     } catch (error: any) {
-      console.error("Inventory fetch error:", error);
-      return res.status(500).json({ status: "error", message: error.message });
+      console.error("Inventory fetch error:", error.message || error);
+      if (serverInventoryCache) {
+        console.log("Serving stale inventory cache following error");
+        return res.json(serverInventoryCache.data);
+      }
+      return res.status(500).json({ status: "error", message: error.message || "Failed to fetch inventory" });
     }
   });
 
@@ -131,6 +149,37 @@ async function startServer() {
 
       const proxyKey = process.env.PROXY_KEY || process.env.APPS_SCRIPT_TOKEN || "test_token";
 
+      // Normalize consent to exact string expected by GAS ("Si" / "No")
+      const rawConsent = lead.consentimiento;
+      let consentVal = "No";
+      if (rawConsent === true || rawConsent === "Si" || rawConsent === "si" || rawConsent === "Sí" || rawConsent === "true" || rawConsent === "1") {
+        consentVal = "Si";
+      } else if (rawConsent === false || rawConsent === "No" || rawConsent === "no" || rawConsent === "false" || rawConsent === "0") {
+        consentVal = "No";
+      } else if (typeof rawConsent === "string" && rawConsent.trim()) {
+        consentVal = rawConsent;
+      }
+
+      const fechaCitaVal = lead.fecha_cita || lead.appointmentDate || "";
+      const isAgendoCita =
+        lead.agendo_cita === true ||
+        lead.agendo_cita === "Si" ||
+        lead.agendo_cita === "Sí" ||
+        lead.agendo_cita === "si" ||
+        lead.agendo_cita === "sí" ||
+        lead.eventType === "cita_confirmada" ||
+        ["appointment", "ai_appointment_confirmation", "appointment_booking_form"].includes(lead.type) ||
+        Boolean(fechaCitaVal && fechaCitaVal.trim() !== "");
+
+      const agendoCitaVal = isAgendoCita ? "Si" : "No";
+
+      let fuenteVal = lead.source || lead.fuente || "Web Chat";
+      if (fuenteVal === "web_chat" || fuenteVal === "chat" || fuenteVal === "web") {
+        fuenteVal = "Web Chat";
+      } else if (fuenteVal === "missed_call_sms") {
+        fuenteVal = "missed_call";
+      }
+
       // Map lead data to the exact names expected by the GAS script
       const payload = {
         action: "saveLead",
@@ -150,22 +199,16 @@ async function startServer() {
         tradeMarca: lead.tradeMarca || "",
         tradeModelo: lead.tradeModelo || "",
         estadoTrade: lead.estadoTrade || "",
-        // FIX: never assume consent. "Never asked" and "said no" are different
-        // states, and both must stay out of campaigns until explicitly confirmed.
-        consentimiento:
-          lead.consentimiento === true
-            ? true
-            : lead.consentimiento === false
-              ? false
-              : "",
+        consentimiento: consentVal,
         resumenIA: lead.fullText || lead.resumenIA || "",
         estadoLead: lead.estadoLead || "Nuevo",
-        fuente: lead.source || lead.fuente || "web_chat",
-        agendo_cita: lead.agendo_cita || (lead.fecha_cita ? true : false) || false,
-        fecha_cita: lead.fecha_cita || lead.appointmentDate || "",
+        fuente: fuenteVal,
+        agendo_cita: agendoCitaVal,
+        fecha_cita: fechaCitaVal,
         notas: lead.notas || lead.notes || lead.content || "",
         eventType: lead.eventType || "nuevo_lead",
         metodoPago: lead.metodoPago || "",
+        calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com",
         handoffUrgente: lead.handoffUrgente || false,
         conversationHistory: lead.conversationHistory || []
       };
@@ -264,7 +307,7 @@ async function startServer() {
     });
   }
 
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = 3000;
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚗 GT Auto CRM running on port ${PORT}`);
   });
