@@ -29,6 +29,7 @@ export interface ChatMessage {
   isBookingForm?: boolean;
   intent?: string;
   appointmentConfirmed?: boolean;
+  appointmentData?: { email?: string; phone?: string; date?: string; time?: string; };
 }
 
 export interface Lead {

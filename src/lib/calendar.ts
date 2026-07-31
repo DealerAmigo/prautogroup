@@ -106,7 +106,7 @@ export async function createCalendarEvent(details: AppointmentDetails, providedT
   };
 
   // Target shared dealer calendar or environment variable, or fallback
-  const sharedCalendarId = '1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com';
+  const sharedCalendarId = '1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com';
   const targetCalendarId = details.calendarId || process.env.GOOGLE_CALENDAR_ID || sharedCalendarId;
 
   let response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {

@@ -71,7 +71,9 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
 export const getAccessToken = async (): Promise<string | null> => {
   if (!cachedAccessToken) {
-    cachedAccessToken = sessionStorage.getItem('g_access_token');
+    if (typeof sessionStorage !== 'undefined') {
+      cachedAccessToken = sessionStorage.getItem('g_access_token');
+    }
   }
   return cachedAccessToken;
 };
@@ -79,5 +81,7 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const logout = async () => {
   await auth.signOut();
   cachedAccessToken = null;
-  sessionStorage.removeItem('g_access_token');
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem('g_access_token');
+  }
 };

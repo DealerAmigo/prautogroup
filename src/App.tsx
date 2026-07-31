@@ -27,6 +27,15 @@ const TICKER_ITEMS = [
 ];
 
 export default function App() {
+  const sessionIdRef = useRef<string>("");
+  if (!sessionIdRef.current) {
+    let id = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('chat-session-id') : null;
+    if (!id) {
+      id = Math.random().toString(36).substring(2, 9);
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('chat-session-id', id);
+    }
+    sessionIdRef.current = id;
+  }
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -446,12 +455,12 @@ export default function App() {
             shouldStopAfterTools = true;
           } else if (call.name === 'request_car') {
             const args = call.args as any;
-            saveLead({ ...args, type: 'car_request', inputText: textToSubmit });
+            saveLead({ id: sessionIdRef.current, ...args, type: 'car_request', inputText: textToSubmit });
             userMsg.intent = 'Petición';
             toolResults.push({ name: call.name, result: { success: true, message: "Petición registrada correctamente." } });
           } else if (call.name === 'register_lead') {
             const args = call.args as any;
-            saveLead({ ...args, type: 'proposal_request', inputText: textToSubmit, source: args.source || 'chat' });
+            saveLead({ id: sessionIdRef.current, ...args, type: 'proposal_request', inputText: textToSubmit, source: args.source || 'chat' });
             userMsg.intent = 'Interesado';
             toolResults.push({ name: call.name, result: { success: true, message: "Lead guardado exitosamente." } });
           } else if (call.name === 'schedule_appointment') {
@@ -542,6 +551,7 @@ export default function App() {
         .replace(/LEAD_DATA:.*$/gm, "")
         .trim();
 
+      let apptData: any = null;
       // 1. Process appointment if confirmed
       if (citaDataStr) {
         botIntent = 'Cita Confirmada';
@@ -560,7 +570,13 @@ export default function App() {
             appointmentDate = fields[4] || ''; // Fallback
           }
           
+          apptData = {
+            phone: fields[1] || '',
+            date: appointmentDate
+          };
+          
           saveLead({
+            id: sessionIdRef.current,
             nombre: fields[0] || '',
             telefono: fields[1] || '',
             presupuesto_mensual: fields[2] || '',
@@ -604,6 +620,7 @@ export default function App() {
         }
 
         saveLead({
+          id: sessionIdRef.current,
           ...leadDataObj,
           type: 'ai_lead_capture',
           eventType: eventTypeAtCapture,
@@ -638,6 +655,7 @@ export default function App() {
         timestamp: Date.now(),
         intent: botIntent,
         appointmentConfirmed: appointmentConfirmed,
+        appointmentData: apptData ? { phone: apptData.phone, date: apptData.date, email: leadDataObj?.email } : undefined,
         vehicles: vehiclesToShow.length > 0 ? vehiclesToShow : undefined
       };
 
@@ -1731,10 +1749,24 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
                 <span className="text-zinc-300">Asesor:</span>
                 <span className="text-white font-bold">Camilo (AI)</span>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-300">Estado de Sincronización:</span>
-                <span className="text-emerald-400 font-bold uppercase tracking-widest text-[9px] flex items-center gap-1">● GOOGLE SHEET & CALENDAR</span>
-              </div>
+              {message.appointmentData?.date && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-300">Fecha y Hora:</span>
+                  <span className="text-white font-bold">{message.appointmentData.date}</span>
+                </div>
+              )}
+              {message.appointmentData?.phone && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-300">Teléfono:</span>
+                  <span className="text-white font-bold">{message.appointmentData.phone}</span>
+                </div>
+              )}
+              {message.appointmentData?.email && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-300">Email:</span>
+                  <span className="text-white font-bold">{message.appointmentData.email}</span>
+                </div>
+              )}
               <div className="flex justify-between text-xs">
                 <span className="text-zinc-300">Ubicación del Concesionario:</span>
                 <span className="text-white font-bold text-right text-[10px]">PR-2 km 26.1, Dorado, PR</span>
@@ -1742,7 +1774,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
             </div>
 
             <div className="mt-4 bg-[#0a0a0a]/80 rounded-xl p-3 border border-white/5 text-center">
-              <p className="text-[9px] font-black text-sky-300 uppercase tracking-widest">¡Tu cita ha sido notificada al dueño por email y registrada con éxito!</p>
+              <p className="text-[9px] font-black text-sky-300 uppercase tracking-widest">¡Su cita está registrada y confirmada!</p>
             </div>
           </motion.div>
         </div>

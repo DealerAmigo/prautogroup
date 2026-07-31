@@ -226,7 +226,7 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     notas: lead.notas || "",
     eventType: lead.eventType || "nuevo_lead",
     metodoPago: lead.metodoPago || "",
-    calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com",
+    calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com",
     handoffUrgente: lead.handoffUrgente || false,
     conversationHistory: lead.conversationHistory || []
   };
