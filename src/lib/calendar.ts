@@ -107,7 +107,7 @@ export async function createCalendarEvent(details: AppointmentDetails, providedT
 
   // Target shared dealer calendar or environment variable, or fallback
   const sharedCalendarId = '1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com';
-  const targetCalendarId = details.calendarId || process.env.GOOGLE_CALENDAR_ID || sharedCalendarId;
+  const targetCalendarId = details.calendarId || (typeof process !== 'undefined' && process.env ? process.env.GOOGLE_CALENDAR_ID : undefined) || sharedCalendarId;
 
   let response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {
     method: 'POST',

@@ -571,7 +571,7 @@ export default function App() {
           }
           
           apptData = {
-            phone: fields[1] || '',
+//            phone: fields[1] || '',
             date: appointmentDate
           };
           
@@ -581,7 +581,7 @@ export default function App() {
             telefono: fields[1] || '',
             presupuesto_mensual: fields[2] || '',
             vehiculo_interes: fields[3] || '',
-            agendo_cita: true,
+            agendo_cita: 'Si',
             fecha_cita: appointmentDate,
             notas: appointmentNotes,
             type: 'ai_appointment_confirmation',
@@ -606,7 +606,7 @@ export default function App() {
       }
 
       // 2. Process lead data capture (instantáneuamente al capturar/actualizar datos)
-      if (leadDataObj) {
+      if (leadDataObj && !citaDataStr) {
         if (!botIntent) {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';

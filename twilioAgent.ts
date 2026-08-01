@@ -205,6 +205,7 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     _token: proxyKey,
     proxyKey: proxyKey,
     sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0",
+    id: lead.id || "",
     nombre: lead.nombre || "",
     telefono: lead.telefono || "",
     email: lead.email || "",
@@ -365,13 +366,14 @@ router.post("/sms", async (req, res) => {
     if (leadData || citaConfirmada) {
       const parts = citaConfirmada ? citaConfirmada.split("|") : [];
       await sendLeadToGAS({
+        id: from,
         nombre: leadData?.nombre || parts[0] || "",
         telefono: from,
         vehiculoInteres: leadData?.vehiculoInteres || parts[3] || "",
         consentimiento: leadData?.consentimiento || "Si",
         metodoPago: leadData?.metodoPago || parts[2] || "",
         eventType: citaConfirmada ? "cita_confirmada" : (leadData?.eventType || "nuevo_lead"),
-        agendo_cita: !!citaConfirmada,
+        agendo_cita: citaConfirmada ? "Si" : "No",
         fecha_cita: leadData?.fecha_cita || parts[4] || "",
         notas: leadData?.notas || parts[5] || "",
         fuente: "missed_call_sms",

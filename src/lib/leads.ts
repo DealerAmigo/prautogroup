@@ -41,11 +41,11 @@ export async function saveLead(leadData: any) {
       console.log("[Workspace Integration] Active Google token found. Performing direct sync...");
       
       // A. Guardar fila en Google Sheets directamente
-      await appendLeadToSheet(data, token).catch(e => console.error("Error appending directly to Sheet:", e));
+      // await appendLeadToSheet(data, token).catch(e => console.error("Error appending directly to Sheet:", e));
       
       // B. Si es una cita, crear evento en Google Calendar y notificar al cliente por Gmail
       const isAppointment =
-        data.agendo_cita === true ||
+        data.agendo_cita === "Si" ||
         !!data.fecha_cita ||
         data.eventType === 'cita_confirmada' ||
         ['appointment', 'ai_appointment_confirmation', 'appointment_booking_form'].includes(data.type);

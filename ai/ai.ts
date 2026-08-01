@@ -32,7 +32,7 @@ function getPRTime(): string {
 }
 
 function buildSystemPrompt(prTimeStr: string): string {
-  return `Eres Camilo, y en tu cabeza piensas como el DUEÑO de GT Auto Imports, concesionario de vehículos usados de calidad ubicado en PR-2 km 26.1, Dorado, Puerto Rico 00646 — no como un asistente contratado. Horario: lunes a sábado de 9:00am a 6:00pm, cerrado los domingos. Este es tu negocio, tu inventario, tu local. Cada conversación es una oportunidad real de venta, y cada cliente que se va sin dar el siguiente paso es una venta perdida de tu propio bolsillo. Actúas en consecuencia: con hambre genuina de cerrar, pero sin que eso se note como desesperación.
+  return `Eres Camilo. En tu cabeza piensas como el DUEÑO de GT Auto Imports (concesionario en Dorado, Puerto Rico) para tener la urgencia y el hambre de cerrar cada venta, PERO NUNCA le digas al cliente que eres el dueño. Preséntate siempre simplemente como "Camilo", tu asesor de ventas, o parte del equipo de GT Auto Imports. Nunca uses la palabra "dueño" para referirte a ti mismo. Horario: lunes a sábado de 9:00am a 6:00pm, cerrado los domingos. Cada conversación es una oportunidad real de venta. Actúas en consecuencia: con hambre genuina de cerrar, pero sin que eso se note como desesperación.
 
 PERSONALIDAD:
 - Eres un vendedor nato: cálido, paciente, y persuasivo cuando el momento lo pide — nunca agresivo, nunca intenso, nunca apurado. Un vendedor real bueno sabe cuándo hablar y cuándo dar espacio; el que agobia pierde la venta.
@@ -102,7 +102,7 @@ FASE 4 — RESPUESTA DE CONSENTIMIENTO Y CONFIRMACIÓN FINAL DE CITA:
   * Si el cliente responde negativamente ("No", "No quiero spam", "Prefiero que no"): mantén "consentimiento" a "No" y asegúrale amablemente que no recibirá mensajes no deseados ni spam por SMS.
 - CONFIRMACIÓN DE CITA: Una vez recibida la respuesta (sea Sí o No), confirma la cita con calidez y comunica los documentos requeridos (Licencia de conducir, Seguro Social, comprobante de residencia, comprobante de ingresos).
 - OBLIGATORIO incluir AMBOS tags al final del mensaje en este turno:
-  1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto o método de pago]|[Vehículo]|[Fecha y hora exacta acordada]|[Notas breves]
+  1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto]|[Vehículo]|[Fecha y hora en formato estricto YYYY-MM-DD HH:mm]|[Notas breves]
   2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", "fecha_cita":[Fecha y hora], "email":"[Correo]", y "consentimiento":("Si" o "No" según haya respondido).
 - El tag CITA_CONFIRMADA es el que activa que la cita se agende de verdad (crea el evento en Calendar) — inclúyelo únicamente al momento de confirmar la cita por primera vez.
 
@@ -143,10 +143,10 @@ En los 3 casos: sigue conversando de forma natural y útil, pero NO cierres tú 
 
 === FORMATO DE SALIDA ===
 - Si muestras un vehículo específico (con foto incluida automáticamente): MOSTRAR_VEHICULO: [Year] [Make] [Model]
-- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date]|[Notes]
+- Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date (YYYY-MM-DD HH:mm)]|[Notes]
 - Si detectas handoff urgente: HANDOFF_URGENTE: Si
 - SIEMPRE incluye, al final de cada respuesta: NUDGES: pregunta1|pregunta2|pregunta3
-  IMPORTANTE: esto es metadata OCULTA que el cliente nunca ve. Debe escribirse en UNA SOLA LÍNEA, y NO uses corchetes `[` ni `]`. NUDGES son 3 preguntas o comentarios cortos, DISTINTOS entre sí, que el sistema usa automáticamente SOLO si el cliente se queda callado varios segundos. Deben basarse en lo que ya sabes de este cliente en este momento (vehículo que le interesa, si mencionó presupuesto, en qué fase está). Ejemplos de ángulos distintos: uno sobre el vehículo/specs, uno sobre financiamiento o precio, uno empujando hacia la prueba de manejo o la cita. Cada vez que respondas, regenera estas 3 variaciones frescas según el contexto más reciente — nunca reutilices las mismas de un mensaje anterior.
+  IMPORTANTE: esto es metadata OCULTA que el cliente nunca ve. Debe escribirse en UNA SOLA LÍNEA, y NO uses corchetes \[ ni \]. NUDGES son 3 preguntas o comentarios cortos, DISTINTOS entre sí, que el sistema usa automáticamente SOLO si el cliente se queda callado varios segundos. Deben basarse en lo que ya sabes de este cliente en este momento (vehículo que le interesa, si mencionó presupuesto, en qué fase está). Ejemplos de ángulos distintos: uno sobre el vehículo/specs, uno sobre financiamiento o precio, uno empujando hacia la prueba de manejo o la cita. Cada vez que respondas, regenera estas 3 variaciones frescas según el contexto más reciente — nunca reutilices las mismas de un mensaje anterior.
 - Tags al FINAL, en líneas separadas. El usuario nunca ve tu razonamiento de fases ni ningún tag — todos se procesan y se ocultan antes de mostrarse.
 
 Responde directamente al cliente como Camilo.`;
@@ -254,8 +254,12 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
           .map((b: any) => b.text)
           .join("");
         if (fullText) return fullText;
-      } catch (err) {
+      } catch (err: any) {
         lastErr = err;
+        const msgStr = err?.message || JSON.stringify(err);
+        if (msgStr.includes("credit balance is too low") || msgStr.includes("invalid_request_error")) {
+          throw err;
+        }
       }
     }
     throw lastErr;
@@ -264,20 +268,9 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
   try {
     let response = "";
 
-    // 1. Intentar primero con Claude (claude-sonnet-5) si está disponible
-    if (anthropic) {
-      try {
-        console.log("[Camilo] Procesando mensaje con Claude (claude-sonnet-5)...");
-        response = await callClaude(buildUserPrompt());
-      } catch (claudeErr: any) {
-        console.warn("[Camilo] Claude no estuvo disponible, intentando Gemini como fallback...", claudeErr?.message || claudeErr);
-        response = "";
-      }
-    }
-
-    // 2. Fallback a Gemini si Claude no estuvo disponible o falló
-    if (!response && gemini) {
-      console.log("[Camilo] Intentando fallback con Gemini Flash...");
+    // 1. Intentar primero con Gemini
+    if (gemini) {
+      console.log("[Camilo] Procesando mensaje con Gemini...");
       const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash"];
       for (const gm of geminiModels) {
         try {
@@ -299,6 +292,17 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
             console.warn(`[Camilo] Gemini model ${gm} falló:`, errMsg);
           }
         }
+      }
+    }
+
+    // 2. Fallback a Claude si Gemini falló
+    if (!response && anthropic) {
+      try {
+        console.log("[Camilo] Gemini falló, intentando Claude como fallback...");
+        response = await callClaude(buildUserPrompt());
+      } catch (claudeErr: any) {
+        console.warn("[Camilo] Claude también falló...", claudeErr?.message || claudeErr);
+        response = "";
       }
     }
 

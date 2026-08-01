@@ -130,7 +130,7 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
         text: responseText
       });
     } catch (error: any) {
-      console.error("Chat error:", error);
+      console.error("Chat error:", error.stack || error);
       return res.status(500).json({
         error: "Internal server error",
         message: error?.message || "unknown"
