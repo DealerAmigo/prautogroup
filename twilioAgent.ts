@@ -121,14 +121,17 @@ function extractTags(rawText: string) {
     text = text.replace(/HANDOFF_URGENTE:.*$/m, "").trim();
   }
 
-  const leadMatch = text.match(/LEAD_DATA:\s*(\{.*?\})/s);
+  const leadMatch = text.match(/LEAD_DATA:\s*```(?:json)?\s*(\{[\s\S]*?\})\s*```/i)
+    || text.match(/LEAD_DATA:\s*(\{[\s\S]*?\})/i)
+    || text.match(/```json\s*(\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\})\s*```/i)
+    || text.match(/(\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\})/i);
+
   if (leadMatch) {
     try {
-      leadData = JSON.parse(leadMatch[1]);
+      leadData = JSON.parse(leadMatch[1].trim());
     } catch (e) {
       console.error("[TwilioAgent] Error parseando LEAD_DATA:", e);
     }
-    text = text.replace(/LEAD_DATA:\s*\{.*?\}/s, "").trim();
   }
 
   // MOSTRAR_VEHICULO no aplica a SMS de texto plano (no hay carrusel de fotos) -- se limpia y se ignora.
@@ -137,7 +140,7 @@ function extractTags(rawText: string) {
     text = text.replace(/MOSTRAR_VEHICULO:.*$/m, "").trim();
   }
 
-  // Final fail-safe cleanup: strip any remaining internal tags and thoughts from SMS body
+  // Final fail-safe cleanup: strip any remaining internal tags, JSON blocks, and thoughts from SMS body
   text = text
     .replace(/^(?:El cliente|Notas|Análisis|Pensamiento|Razonamiento|FASE \d|Internal Note)[\s\S]*?\n\n/i, "")
     .replace(/^El cliente (?:todavía|aún) no [\s\S]*?\n+/i, "")
@@ -145,13 +148,15 @@ function extractTags(rawText: string) {
     .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
     .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
     .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
-    .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+    .replace(/LEAD_DATA:\s*```(?:json)?[\s\S]*?```/gi, "")
+    .replace(/LEAD_DATA:\s*\{[\s\S]*?\}/gs, "")
+    .replace(/LEAD_DATA:.*$/gm, "")
+    .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, "")
+    .replace(/\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\}/gi, "")
     .replace(/CITA_CONFIRMADA:.*$/gm, "")
     .replace(/HANDOFF_URGENTE:.*$/gm, "")
     .replace(/NUDGES:.*$/gm, "")
     .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
-    .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
-    .replace(/LEAD_DATA:.*$/gm, "")
     .trim();
 
   return { text, leadData, citaConfirmada, handoffUrgente };

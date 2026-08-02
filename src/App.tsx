@@ -514,16 +514,19 @@ export default function App() {
         responseText = responseText.replace(/NUDGES:.*$/m, '').trim();
       }
 
-      // Extract LEAD_DATA:
+      // Extract LEAD_DATA (handles LEAD_DATA: {...}, ```json {...} ``` or raw JSON containing lead keys):
       let leadDataObj: any = null;
-      const leadMatch = responseText.match(/LEAD_DATA:\s*(\{.*?\})/s);
+      const leadMatch = responseText.match(/LEAD_DATA:\s*```(?:json)?\s*(\{[\s\S]*?\})\s*```/i)
+        || responseText.match(/LEAD_DATA:\s*(\{[\s\S]*?\})/i)
+        || responseText.match(/```json\s*(\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\})\s*```/i)
+        || responseText.match(/(\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\})/i);
+
       if (leadMatch) {
          try {
            leadDataObj = JSON.parse(leadMatch[1].trim());
          } catch(e) {
            console.error("Error parsing LEAD_DATA JSON in regex:", e);
          }
-         responseText = responseText.replace(/LEAD_DATA:\s*\{.*?\}/s, '').trim();
       }
 
       // Extract MOSTRAR_VEHICULO:
@@ -534,7 +537,7 @@ export default function App() {
          responseText = responseText.replace(/MOSTRAR_VEHICULO:.*$/m, '').replace(/MOSTRAR_VEHICULO:.*/s, '').trim();
       }
 
-      // Final fail-safe cleanup: remove any remaining metadata tags and internal thoughts before displaying to user
+      // Final fail-safe cleanup: remove any remaining metadata tags, JSON blocks, internal thoughts before displaying to user
       responseText = responseText
         .replace(/^(?:El cliente|Notas|Análisis|Pensamiento|Razonamiento|FASE \d|Internal Note)[\s\S]*?\n\n/i, "")
         .replace(/^El cliente (?:todavía|aún) no [\s\S]*?\n+/i, "")
@@ -542,13 +545,15 @@ export default function App() {
         .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
         .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
         .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
-        .replace(/LEAD_DATA:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
+        .replace(/LEAD_DATA:\s*```(?:json)?[\s\S]*?```/gi, "")
+        .replace(/LEAD_DATA:\s*\{[\s\S]*?\}/gs, "")
+        .replace(/LEAD_DATA:.*$/gm, "")
+        .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, "")
+        .replace(/\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\}/gi, "")
         .replace(/CITA_CONFIRMADA:.*$/gm, "")
         .replace(/HANDOFF_URGENTE:.*$/gm, "")
         .replace(/NUDGES:.*$/gm, "")
         .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
-        .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
-        .replace(/LEAD_DATA:.*$/gm, "")
         .trim();
 
       let apptData: any = null;
@@ -559,33 +564,51 @@ export default function App() {
       let citaPhone = "";
       let citaInterest = "";
 
-      // 1. Process appointment if confirmed
-      if (citaDataStr) {
+      // 1. Process appointment if confirmed (either via CITA_CONFIRMADA tag or LEAD_DATA appointment indicator)
+      const isConfirmedFromLead = leadDataObj && (
+        leadDataObj.eventType === 'cita_confirmada' ||
+        leadDataObj.agendo_cita === true ||
+        leadDataObj.agendo_cita === 'Si' ||
+        leadDataObj.agendo_cita === 'Sí' ||
+        leadDataObj.agendo_cita === 'si'
+      );
+
+      if (citaDataStr || isConfirmedFromLead) {
         botIntent = 'Cita Confirmada';
         userMsg.intent = 'Cita Confirmada';
         appointmentConfirmed = true;
         isAppointmentTurn = true;
         try {
-          const fields = citaDataStr.split('|');
-          if (fields.length >= 6) {
-            citaName = fields[0] || '';
-            citaPhone = fields[1] || '';
-            citaInterest = fields[3] || '';
-            appointmentDate = fields[4] || '';
-            appointmentNotes = fields[5] || '';
-          } else {
-            citaName = fields[0] || '';
-            citaPhone = fields[1] || '';
-            citaInterest = fields[3] || '';
-            appointmentNotes = fields[4] || '';
-            appointmentDate = fields[4] || ''; // Fallback
+          if (citaDataStr) {
+            const fields = citaDataStr.split('|');
+            if (fields.length >= 6) {
+              citaName = fields[0] || '';
+              citaPhone = fields[1] || '';
+              citaInterest = fields[3] || '';
+              appointmentDate = fields[4] || '';
+              appointmentNotes = fields[5] || '';
+            } else {
+              citaName = fields[0] || '';
+              citaPhone = fields[1] || '';
+              citaInterest = fields[3] || '';
+              appointmentNotes = fields[4] || '';
+              appointmentDate = fields[4] || ''; // Fallback
+            }
           }
-          
+
+          if (!appointmentDate && leadDataObj?.fecha_cita) appointmentDate = leadDataObj.fecha_cita;
+          if (!citaName && leadDataObj?.nombre) citaName = leadDataObj.nombre;
+          if (!citaPhone && leadDataObj?.telefono) citaPhone = leadDataObj.telefono;
+          if (!citaInterest && leadDataObj?.vehiculoInteres) citaInterest = leadDataObj.vehiculoInteres;
+          if (!appointmentNotes && (leadDataObj?.resumen || leadDataObj?.notas)) {
+            appointmentNotes = leadDataObj.resumen || leadDataObj.notas;
+          }
+
           apptData = {
             date: appointmentDate
           };
 
-          // Crear el evento de calendario explícitamente al confirmar cita (sin crear un bypass ni otro lead ID)
+          // Crear el evento de calendario explícitamente al confirmar cita
           createCalendarEvent({
             customerName: citaName || leadDataObj?.nombre || 'Cliente GT Auto Imports',
             date: appointmentDate,
@@ -596,7 +619,7 @@ export default function App() {
 
           leadEventTypeRef.current = 'actualizacion';
         } catch (e) {
-          console.error("Error parsing CITA_CONFIRMADA data:", e);
+          console.error("Error parsing CITA_CONFIRMADA / appointment data:", e);
         }
       }
 

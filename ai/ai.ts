@@ -152,6 +152,8 @@ En los 3 casos: sigue conversando de forma natural y útil, pero NO cierres tú 
 - Si muestras un vehículo específico (con foto incluida automáticamente): MOSTRAR_VEHICULO: [Year] [Make] [Model]
 - Si confirmas una cita: CITA_CONFIRMADA: [Name]|[Phone]|[Budget]|[Vehicle]|[Date]|[Notes]
 - Si detectas handoff urgente: HANDOFF_URGENTE: Si
+- Si recopilas o actualizas datos del cliente: LEAD_DATA: {"nombre":"...", "telefono":"...", "vehiculoInteres":"...", "eventType":"..."}
+  REGLA INQUEBRANTABLE SOBRE LEAD_DATA: DEBE llevar la etiqueta exactísima "LEAD_DATA: " antes de la llave {. JAMÁS escribas un JSON suelto o dentro de bloques de código markdown \`\`\`json en tu respuesta al cliente.
 - SIEMPRE incluye, al final de cada respuesta: NUDGES: pregunta1|pregunta2|pregunta3
   IMPORTANTE: esto es metadata OCULTA que el cliente nunca ve. Debe escribirse en UNA SOLA LÍNEA, y NO uses corchetes \[ ni \]. NUDGES son 3 preguntas o comentarios cortos, DISTINTOS entre sí, que el sistema usa automáticamente SOLO si el cliente se queda callado varios segundos. Deben basarse en lo que ya sabes de este cliente en este momento (vehículo que le interesa, si mencionó presupuesto, en qué fase está). Ejemplos de ángulos distintos: uno sobre el vehículo/specs, uno sobre financiamiento o precio, uno empujando hacia la prueba de manejo o la cita. Cada vez que respondas, regenera estas 3 variaciones frescas según el contexto más reciente — nunca reutilices las mismas de un mensaje anterior.
 - Tags al FINAL, en líneas separadas. El usuario nunca ve tu razonamiento de fases ni ningún tag — todos se procesan y se ocultan antes de mostrarse.
@@ -174,6 +176,8 @@ function hasVisibleText(raw: string): boolean {
     .replace(/NUDGES:.*$/gm, "")
     .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
     .replace(/LEAD_DATA:\s*\{.*?\}/gs, "")
+    .replace(/```(?:json)?[\s\S]*?```/g, "")
+    .replace(/\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\}/g, "")
     .trim();
   return stripped.length > 0;
 }
