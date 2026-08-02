@@ -4,6 +4,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { processCamiloMessage } from "./ai/ai";
 import twilioAgentRouter from "./twilioAgent";
+import { parseAppointmentDateTime } from "./src/lib/calendar";
 
 async function startServer() {
   const app = express();
@@ -138,7 +139,75 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
     }
   });
 
- app.post("/api/leads", async (req, res) => {
+  app.post("/api/calendar/event", async (req, res) => {
+    try {
+      const details = req.body || {};
+      const customerName = details.customerName || details.nombre || 'Cliente GT Auto Imports';
+      const dateStr = details.date || details.fecha || '';
+      const timeStr = details.time || details.hora || '';
+      const interest = details.interest || details.vehiculoInteres || 'Prueba de Manejo';
+      const phone = details.phone || details.telefono || '';
+      const email = details.email || '';
+      const calendarId = details.calendarId || process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com";
+
+      const parsedDates = details.startISO && details.endISO
+        ? { startISO: details.startISO, endISO: details.endISO }
+        : parseAppointmentDateTime(dateStr, timeStr);
+
+      const leadsScriptUrl = process.env.LEADS_SCRIPT_URL;
+      const proxyKey = process.env.PROXY_KEY || process.env.APPS_SCRIPT_TOKEN || "test_token";
+
+      const payload = {
+        action: "createCalendarEvent",
+        _token: proxyKey,
+        proxyKey: proxyKey,
+        calendarId: calendarId,
+        summary: `Cita GT Auto Imports: ${customerName} - ${interest}`,
+        description: `Cliente: ${customerName}\nTeléfono: ${phone}\nEmail: ${email}\nVehículo de Interés: ${interest}\nCreado automáticamente por Asistente Camilo`,
+        location: "PR-2 km 26.1, Dorado, Puerto Rico 00646",
+        customerName: customerName,
+        nombre: customerName,
+        phone: phone,
+        telefono: phone,
+        email: email,
+        interest: interest,
+        vehiculoInteres: interest,
+        date: dateStr,
+        time: timeStr,
+        startISO: parsedDates.startISO,
+        endISO: parsedDates.endISO,
+        timeZone: "America/Puerto_Rico"
+      };
+
+      console.log(`[Calendar API] Requesting calendar event creation on calendar ${calendarId}...`, parsedDates);
+
+      if (leadsScriptUrl) {
+        try {
+          const gasResponse = await fetch(leadsScriptUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const gasData = await gasResponse.text().catch(() => '');
+          console.log("[Calendar API] GAS response:", gasData);
+        } catch (gasErr) {
+          console.error("[Calendar API] GAS forward error:", gasErr);
+        }
+      }
+
+      return res.json({
+        status: "success",
+        message: "Calendar event payload sent to backend pipeline",
+        calendarId,
+        event: parsedDates
+      });
+    } catch (error: any) {
+      console.error("[Calendar API] Error creating event:", error);
+      return res.status(500).json({ status: "error", message: error.message || "Calendar error" });
+    }
+  });
+
+  app.post("/api/leads", async (req, res) => {
     try {
       const lead = req.body;
       
@@ -181,10 +250,23 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
         fuenteVal = "missed_call";
       }
 
+      // Parse appointment ISO dates if fecha_cita exists
+      let startISO = lead.startISO || "";
+      let endISO = lead.endISO || "";
+      if (isAgendoCita && fechaCitaVal && (!startISO || !endISO)) {
+        try {
+          const dates = parseAppointmentDateTime(fechaCitaVal, lead.time || "");
+          startISO = dates.startISO;
+          endISO = dates.endISO;
+        } catch (e) {
+          console.warn("[Leads API] Could not parse appointment date:", e);
+        }
+      }
+
       // Ensure consistent lead ID using provided id or clean phone number
       const rawPhone = lead.telefono || lead.phone || "";
       const cleanPhone = String(rawPhone).replace(/\D/g, "");
-      const leadId = lead.id || (cleanPhone ? `lead_${cleanPhone}` : "");
+      const leadId = (cleanPhone.length >= 7 ? `lead_${cleanPhone}` : "") || lead.id || "";
 
       // Map lead data to the exact names expected by the GAS script
       const payload = {
@@ -212,6 +294,11 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
         fuente: fuenteVal,
         agendo_cita: agendoCitaVal,
         fecha_cita: fechaCitaVal,
+        fecha_cita_start_iso: startISO,
+        fecha_cita_end_iso: endISO,
+        startISO: startISO,
+        endISO: endISO,
+        timeZone: "America/Puerto_Rico",
         notas: lead.notas || lead.notes || lead.content || "",
         eventType: isAgendoCita ? "cita_confirmada" : (lead.eventType || "nuevo_lead"),
         metodoPago: lead.metodoPago || "",

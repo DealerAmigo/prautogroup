@@ -10,49 +10,87 @@ export interface AppointmentDetails {
   calendarId?: string;
 }
 
-function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO: string; endISO: string } {
-  let year = new Date().getFullYear();
-  let month = new Date().getMonth();
-  let day = new Date().getDate() + 1; // Default tomorrow
+export function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO: string; endISO: string } {
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  let day = now.getDate() + 1; // Default tomorrow
 
   const monthsEs: Record<string, number> = {
     enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
     julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11
   };
 
+  const weekdaysEs: Record<string, number> = {
+    domingo: 0, lunes: 1, martes: 2, miercoles: 3, miércoles: 3,
+    jueves: 4, viernes: 5, sabado: 6, sábado: 6
+  };
+
   const combined = `${dateStr || ''} ${timeStr || ''}`.toLowerCase();
 
-  // Extract YYYY-MM-DD or YYYY/MM/DD
-  const dateMatch = combined.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-  if (dateMatch) {
-    year = parseInt(dateMatch[1], 10);
-    month = parseInt(dateMatch[2], 10) - 1;
-    day = parseInt(dateMatch[3], 10);
+  if (combined.includes('pasado mañana') || combined.includes('pasado manana')) {
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+    year = target.getFullYear();
+    month = target.getMonth();
+    day = target.getDate();
+  } else if (combined.includes('mañana') || combined.includes('manana')) {
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    year = target.getFullYear();
+    month = target.getMonth();
+    day = target.getDate();
+  } else if (combined.includes('hoy')) {
+    year = now.getFullYear();
+    month = now.getMonth();
+    day = now.getDate();
   } else {
-    const altMatch = combined.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (altMatch) {
-      day = parseInt(altMatch[1], 10);
-      month = parseInt(altMatch[2], 10) - 1;
-      year = parseInt(altMatch[3], 10);
+    // Check YYYY-MM-DD or YYYY/MM/DD
+    const dateMatch = combined.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (dateMatch) {
+      year = parseInt(dateMatch[1], 10);
+      month = parseInt(dateMatch[2], 10) - 1;
+      day = parseInt(dateMatch[3], 10);
     } else {
-      // Check for Spanish month names e.g. "5 de agosto" or "agosto 5"
-      for (const [mName, mIdx] of Object.entries(monthsEs)) {
-        if (combined.includes(mName)) {
-          month = mIdx;
-          const dayMatch = combined.match(new RegExp(`(\\d{1,2})\\s*(?:de)?\\s*${mName}`)) || combined.match(new RegExp(`${mName}\\s*(?:de)?\\s*(\\d{1,2})`));
-          if (dayMatch) {
-            day = parseInt(dayMatch[1], 10);
+      const altMatch = combined.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (altMatch) {
+        day = parseInt(altMatch[1], 10);
+        month = parseInt(altMatch[2], 10) - 1;
+        year = parseInt(altMatch[3], 10);
+      } else {
+        let foundDate = false;
+        // Check for Spanish month names e.g. "5 de agosto" or "agosto 5"
+        for (const [mName, mIdx] of Object.entries(monthsEs)) {
+          if (combined.includes(mName)) {
+            month = mIdx;
+            const dayMatch = combined.match(new RegExp(`(\\d{1,2})\\s*(?:de)?\\s*${mName}`)) || combined.match(new RegExp(`${mName}\\s*(?:de)?\\s*(\\d{1,2})`));
+            if (dayMatch) {
+              day = parseInt(dayMatch[1], 10);
+            }
+            const yearMatch = combined.match(/20\d{2}/);
+            if (yearMatch) {
+              year = parseInt(yearMatch[0], 10);
+            } else {
+              if (month < now.getMonth() || (month === now.getMonth() && day < now.getDate())) {
+                year = now.getFullYear() + 1;
+              }
+            }
+            foundDate = true;
+            break;
           }
-          const yearMatch = combined.match(/20\d{2}/);
-          if (yearMatch) {
-            year = parseInt(yearMatch[0], 10);
-          } else {
-            const now = new Date();
-            if (month < now.getMonth() || (month === now.getMonth() && day < now.getDate())) {
-              year = now.getFullYear() + 1;
+        }
+
+        if (!foundDate) {
+          // Check for weekdays e.g. "lunes", "martes"
+          for (const [wName, wIdx] of Object.entries(weekdaysEs)) {
+            if (combined.includes(wName)) {
+              let diff = wIdx - now.getDay();
+              if (diff <= 0) diff += 7; // next occurrence
+              const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff);
+              year = target.getFullYear();
+              month = target.getMonth();
+              day = target.getDate();
+              break;
             }
           }
-          break;
         }
       }
     }
@@ -101,12 +139,33 @@ export async function createCalendarEvent(details: AppointmentDetails, providedT
   // Use provided token or fetch from googleAuth cache
   const token = providedToken || await getAccessToken();
   
-  if (!token) {
-    console.warn("Calendar sync skipped: No access token available.");
-    return { skipped: true, message: "Sync skipped (Auth required)" };
-  }
-
   const { startISO, endISO } = parseAppointmentDateTime(details.date, details.time);
+
+  if (!token) {
+    console.log("[Calendar] No client OAuth token found. Delegating event creation to server API /api/calendar/event...");
+    try {
+      const resp = await fetch('/api/calendar/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...details,
+          startISO,
+          endISO
+        })
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        console.warn("[Calendar] Server calendar API returned non-OK response:", resp.status, errText);
+        return { skipped: true, serverStatus: resp.status, message: "Delegated to server" };
+      }
+      const data = await resp.json();
+      console.log("[Calendar] Server calendar event response:", data);
+      return data;
+    } catch (serverErr) {
+      console.warn("[Calendar] Server calendar API call failed:", serverErr);
+      return { skipped: true, message: "Sync delegated to server fallback" };
+    }
+  }
 
   const descriptionParts = [
     `Cliente: ${details.customerName}`,

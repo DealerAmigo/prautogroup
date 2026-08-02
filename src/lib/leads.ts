@@ -9,7 +9,7 @@ export async function saveLead(leadData: any) {
   const rawPhone = leadData.telefono || leadData.phone || '';
   const cleanPhone = String(rawPhone).replace(/\D/g, '');
   const sessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('chat-session-id') : null;
-  const leadId = leadData.id || (cleanPhone ? `lead_${cleanPhone}` : null) || sessionId || 'session_default';
+  const leadId = (cleanPhone.length >= 7 ? `lead_${cleanPhone}` : null) || leadData.id || sessionId || 'session_default';
 
   const cleanData = {
     ...leadData,

@@ -139,6 +139,7 @@ export default function App() {
   
   const chatRef = useRef<any>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const activeLeadIdRef = useRef<string>("");
   // Rastrea si ya se envió el evento "nuevo_lead" en esta conversación,
   // para que el GAS no repita el email de "nuevo lead" en cada actualización.
   const leadEventTypeRef = useRef<'nuevo_lead' | 'actualizacion'>('nuevo_lead');
@@ -580,19 +581,29 @@ export default function App() {
         isAppointmentTurn = true;
         try {
           if (citaDataStr) {
-            const fields = citaDataStr.split('|');
+            const fields = citaDataStr.split('|').map(s => s.trim());
             if (fields.length >= 6) {
               citaName = fields[0] || '';
               citaPhone = fields[1] || '';
               citaInterest = fields[3] || '';
               appointmentDate = fields[4] || '';
               appointmentNotes = fields[5] || '';
-            } else {
+            } else if (fields.length === 5) {
               citaName = fields[0] || '';
               citaPhone = fields[1] || '';
-              citaInterest = fields[3] || '';
-              appointmentNotes = fields[4] || '';
-              appointmentDate = fields[4] || ''; // Fallback
+              if (/^\$?[\d,]+/.test(fields[2]) || /pronto|credito|budget/i.test(fields[2])) {
+                citaInterest = fields[3] || '';
+                appointmentDate = fields[4] || '';
+              } else {
+                citaInterest = fields[2] || '';
+                appointmentDate = fields[3] || '';
+                appointmentNotes = fields[4] || '';
+              }
+            } else if (fields.length === 4) {
+              citaName = fields[0] || '';
+              citaPhone = fields[1] || '';
+              citaInterest = fields[2] || '';
+              appointmentDate = fields[3] || '';
             }
           }
 
@@ -614,13 +625,23 @@ export default function App() {
             date: appointmentDate,
             time: appointmentDate,
             interest: citaInterest || leadDataObj?.vehiculoInteres || 'Consulta / Test Drive',
-            phone: citaPhone || leadDataObj?.telefono || ''
+            phone: citaPhone || leadDataObj?.telefono || '',
+            email: leadDataObj?.email || ''
           }).catch(err => console.warn("[Calendar] Direct creation skipped/failed:", err));
 
           leadEventTypeRef.current = 'actualizacion';
         } catch (e) {
           console.error("Error parsing CITA_CONFIRMADA / appointment data:", e);
         }
+      }
+
+      // Ensure consistent lead ID derived from clean phone or session
+      const targetPhone = citaPhone || leadDataObj?.telefono || '';
+      const cleanPhoneNum = String(targetPhone).replace(/\D/g, '');
+      if (cleanPhoneNum.length >= 7) {
+        activeLeadIdRef.current = `lead_${cleanPhoneNum}`;
+      } else if (!activeLeadIdRef.current) {
+        activeLeadIdRef.current = sessionIdRef.current;
       }
 
       // 2. Save lead data once (instantáneamente al capturar/actualizar datos o agendar cita)
@@ -638,10 +659,11 @@ export default function App() {
         }
 
         const mergedLead = {
-          id: sessionIdRef.current,
+          id: activeLeadIdRef.current,
           ...(leadDataObj || {}),
           nombre: citaName || leadDataObj?.nombre || '',
           telefono: citaPhone || leadDataObj?.telefono || '',
+          email: leadDataObj?.email || '',
           vehiculoInteres: citaInterest || leadDataObj?.vehiculoInteres || '',
           agendo_cita: isAppointmentTurn ? 'Si' : (leadDataObj?.agendo_cita || 'No'),
           estadoLead: isAppointmentTurn ? 'Cita Agendada' : (leadDataObj?.estadoLead || 'Seguimiento'),
@@ -650,7 +672,8 @@ export default function App() {
           type: isAppointmentTurn ? 'ai_appointment_confirmation' : 'ai_lead_capture',
           eventType: eventTypeAtCapture,
           fullText: responseText,
-          conversationHistory: historySnapshot
+          conversationHistory: historySnapshot,
+          calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com"
         };
 
         saveLead(mergedLead);
