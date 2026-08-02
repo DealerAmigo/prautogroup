@@ -15,18 +15,46 @@ function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO:
   let month = new Date().getMonth();
   let day = new Date().getDate() + 1; // Default tomorrow
 
+  const monthsEs: Record<string, number> = {
+    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11
+  };
+
+  const combined = `${dateStr || ''} ${timeStr || ''}`.toLowerCase();
+
   // Extract YYYY-MM-DD or YYYY/MM/DD
-  const dateMatch = (dateStr || '').match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  const dateMatch = combined.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
   if (dateMatch) {
     year = parseInt(dateMatch[1], 10);
     month = parseInt(dateMatch[2], 10) - 1;
     day = parseInt(dateMatch[3], 10);
   } else {
-    const altMatch = (dateStr || '').match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    const altMatch = combined.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
     if (altMatch) {
       day = parseInt(altMatch[1], 10);
       month = parseInt(altMatch[2], 10) - 1;
       year = parseInt(altMatch[3], 10);
+    } else {
+      // Check for Spanish month names e.g. "5 de agosto" or "agosto 5"
+      for (const [mName, mIdx] of Object.entries(monthsEs)) {
+        if (combined.includes(mName)) {
+          month = mIdx;
+          const dayMatch = combined.match(new RegExp(`(\\d{1,2})\\s*(?:de)?\\s*${mName}`)) || combined.match(new RegExp(`${mName}\\s*(?:de)?\\s*(\\d{1,2})`));
+          if (dayMatch) {
+            day = parseInt(dayMatch[1], 10);
+          }
+          const yearMatch = combined.match(/20\d{2}/);
+          if (yearMatch) {
+            year = parseInt(yearMatch[0], 10);
+          } else {
+            const now = new Date();
+            if (month < now.getMonth() || (month === now.getMonth() && day < now.getDate())) {
+              year = now.getFullYear() + 1;
+            }
+          }
+          break;
+        }
+      }
     }
   }
 
@@ -106,8 +134,8 @@ export async function createCalendarEvent(details: AppointmentDetails, providedT
   };
 
   // Target shared dealer calendar or environment variable, or fallback
-  const sharedCalendarId = '1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com';
-  const targetCalendarId = details.calendarId || (typeof process !== 'undefined' && process.env ? process.env.GOOGLE_CALENDAR_ID : undefined) || sharedCalendarId;
+  const sharedCalendarId = '1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com';
+  const targetCalendarId = details.calendarId || process.env.GOOGLE_CALENDAR_ID || sharedCalendarId;
 
   let response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {
     method: 'POST',

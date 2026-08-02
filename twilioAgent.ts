@@ -191,7 +191,8 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     lead.eventType === "cita_confirmada" ||
     Boolean(fechaCitaVal && fechaCitaVal.trim() !== "");
 
-  const agendoCitaVal = isAgendoCita ? "Si" : "No";
+  const agendoCitaVal = isAgendoCita ? "Si" : (lead.agendo_cita === "Si" || lead.agendo_cita === "Sí" ? "Si" : "No");
+  const estadoLeadVal = isAgendoCita ? "Cita Agendada" : (lead.estadoLead || "Seguimiento");
 
   let fuenteVal = lead.fuente || "missed_call";
   if (fuenteVal === "missed_call_sms") {
@@ -200,12 +201,16 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     fuenteVal = "Web Chat";
   }
 
+  const rawPhone = lead.telefono || "";
+  const cleanPhone = String(rawPhone).replace(/\D/g, "");
+  const leadId = lead.id || (cleanPhone ? `lead_${cleanPhone}` : "");
+
   const payload = {
     action: "saveLead",
     _token: proxyKey,
     proxyKey: proxyKey,
     sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0",
-    id: lead.id || "",
+    id: leadId,
     nombre: lead.nombre || "",
     telefono: lead.telefono || "",
     email: lead.email || "",
@@ -221,13 +226,14 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     estadoTrade: lead.estadoTrade || "",
     consentimiento: consentVal,
     resumenIA: lead.resumenIA || "",
+    estadoLead: estadoLeadVal,
     fuente: fuenteVal,
     agendo_cita: agendoCitaVal,
     fecha_cita: fechaCitaVal,
     notas: lead.notas || "",
-    eventType: lead.eventType || "nuevo_lead",
+    eventType: isAgendoCita ? "cita_confirmada" : (lead.eventType || "nuevo_lead"),
     metodoPago: lead.metodoPago || "",
-    calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com",
+    calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com",
     handoffUrgente: lead.handoffUrgente || false,
     conversationHistory: lead.conversationHistory || []
   };
@@ -366,14 +372,13 @@ router.post("/sms", async (req, res) => {
     if (leadData || citaConfirmada) {
       const parts = citaConfirmada ? citaConfirmada.split("|") : [];
       await sendLeadToGAS({
-        id: from,
         nombre: leadData?.nombre || parts[0] || "",
         telefono: from,
         vehiculoInteres: leadData?.vehiculoInteres || parts[3] || "",
         consentimiento: leadData?.consentimiento || "Si",
         metodoPago: leadData?.metodoPago || parts[2] || "",
         eventType: citaConfirmada ? "cita_confirmada" : (leadData?.eventType || "nuevo_lead"),
-        agendo_cita: citaConfirmada ? "Si" : "No",
+        agendo_cita: !!citaConfirmada,
         fecha_cita: leadData?.fecha_cita || parts[4] || "",
         notas: leadData?.notas || parts[5] || "",
         fuente: "missed_call_sms",

@@ -5,12 +5,17 @@ import { sendNewLeadNotification, sendCustomerConfirmation } from './gmail';
 import { createCalendarEvent } from './calendar';
 
 export async function saveLead(leadData: any) {
-  // Limpiar datos para evitar errores de circularidad y asegurar tipos
+  // Derive a consistent lead ID using provided id, phone number, or session ID
+  const rawPhone = leadData.telefono || leadData.phone || '';
+  const cleanPhone = String(rawPhone).replace(/\D/g, '');
+  const sessionId = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('chat-session-id') : null;
+  const leadId = leadData.id || (cleanPhone ? `lead_${cleanPhone}` : null) || sessionId || 'session_default';
+
   const cleanData = {
     ...leadData,
+    id: leadId,
     timestamp: leadData.timestamp || Date.now(),
     dateStr: new Date().toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' }),
-    id: leadData.id || Math.random().toString(36).substring(2, 9)
   };
   
   const data = JSON.parse(JSON.stringify(cleanData));
@@ -41,11 +46,11 @@ export async function saveLead(leadData: any) {
       console.log("[Workspace Integration] Active Google token found. Performing direct sync...");
       
       // A. Guardar fila en Google Sheets directamente
-      // await appendLeadToSheet(data, token).catch(e => console.error("Error appending directly to Sheet:", e));
+      await appendLeadToSheet(data, token).catch(e => console.error("Error appending directly to Sheet:", e));
       
       // B. Si es una cita, crear evento en Google Calendar y notificar al cliente por Gmail
       const isAppointment =
-        data.agendo_cita === "Si" ||
+        data.agendo_cita === true ||
         !!data.fecha_cita ||
         data.eventType === 'cita_confirmada' ||
         ['appointment', 'ai_appointment_confirmation', 'appointment_booking_form'].includes(data.type);

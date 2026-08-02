@@ -29,9 +29,7 @@ export const initAuth = (
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else if (!isSigningIn) {
         // Attempt to restore token or trigger re-auth
-        if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
-          cachedAccessToken = sessionStorage.getItem('g_access_token');
-        }
+        cachedAccessToken = sessionStorage.getItem('g_access_token');
         if (cachedAccessToken) {
           if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
         } else {
@@ -41,7 +39,7 @@ export const initAuth = (
       }
     } else {
       cachedAccessToken = null;
-      if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') sessionStorage.removeItem('g_access_token');
+      sessionStorage.removeItem('g_access_token');
       if (onAuthFailure) onAuthFailure();
     }
   });
@@ -60,7 +58,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     // We can temporarily save in sessionStorage to survive page reloads if needed,
     // or keep it strictly in memory. Let's write to sessionStorage as a fallback,
     // or keep it strictly in memory per user preferences. Let's do both with option.
-    if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') sessionStorage.setItem('g_access_token', cachedAccessToken);
+    sessionStorage.setItem('g_access_token', cachedAccessToken);
     
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: any) {
@@ -72,7 +70,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (!cachedAccessToken && typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+  if (!cachedAccessToken) {
     cachedAccessToken = sessionStorage.getItem('g_access_token');
   }
   return cachedAccessToken;
@@ -81,5 +79,5 @@ export const getAccessToken = async (): Promise<string | null> => {
 export const logout = async () => {
   await auth.signOut();
   cachedAccessToken = null;
-  if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') sessionStorage.removeItem('g_access_token');
+  sessionStorage.removeItem('g_access_token');
 };

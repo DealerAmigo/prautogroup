@@ -552,51 +552,46 @@ export default function App() {
         .trim();
 
       let apptData: any = null;
+      let isAppointmentTurn = false;
+      let appointmentDate = "";
+      let appointmentNotes = "";
+      let citaName = "";
+      let citaPhone = "";
+      let citaInterest = "";
+
       // 1. Process appointment if confirmed
       if (citaDataStr) {
         botIntent = 'Cita Confirmada';
         userMsg.intent = 'Cita Confirmada';
         appointmentConfirmed = true;
+        isAppointmentTurn = true;
         try {
           const fields = citaDataStr.split('|');
-          let appointmentDate = "";
-          let appointmentNotes = "";
-          
           if (fields.length >= 6) {
+            citaName = fields[0] || '';
+            citaPhone = fields[1] || '';
+            citaInterest = fields[3] || '';
             appointmentDate = fields[4] || '';
             appointmentNotes = fields[5] || '';
           } else {
+            citaName = fields[0] || '';
+            citaPhone = fields[1] || '';
+            citaInterest = fields[3] || '';
             appointmentNotes = fields[4] || '';
             appointmentDate = fields[4] || ''; // Fallback
           }
           
           apptData = {
-//            phone: fields[1] || '',
             date: appointmentDate
           };
-          
-          saveLead({
-            id: sessionIdRef.current,
-            nombre: fields[0] || '',
-            telefono: fields[1] || '',
-            presupuesto_mensual: fields[2] || '',
-            vehiculo_interes: fields[3] || '',
-            agendo_cita: 'Si',
-            fecha_cita: appointmentDate,
-            notas: appointmentNotes,
-            type: 'ai_appointment_confirmation',
-            eventType: 'cita_confirmada',
-            fullText: responseText,
-            conversationHistory: messages.map(m => ({ role: m.role, content: m.content }))
-          });
 
-          // Crear el evento de calendario explícitamente al confirmar cita
+          // Crear el evento de calendario explícitamente al confirmar cita (sin crear un bypass ni otro lead ID)
           createCalendarEvent({
-            customerName: fields[0] || 'Cliente GT Auto Imports',
+            customerName: citaName || leadDataObj?.nombre || 'Cliente GT Auto Imports',
             date: appointmentDate,
             time: appointmentDate,
-            interest: fields[3] || 'Consulta / Test Drive',
-            phone: fields[1] || ''
+            interest: citaInterest || leadDataObj?.vehiculoInteres || 'Consulta / Test Drive',
+            phone: citaPhone || leadDataObj?.telefono || ''
           }).catch(err => console.warn("[Calendar] Direct creation skipped/failed:", err));
 
           leadEventTypeRef.current = 'actualizacion';
@@ -605,13 +600,13 @@ export default function App() {
         }
       }
 
-      // 2. Process lead data capture (instantáneuamente al capturar/actualizar datos)
-      if (leadDataObj && !citaDataStr) {
+      // 2. Save lead data once (instantáneamente al capturar/actualizar datos o agendar cita)
+      if (leadDataObj || isAppointmentTurn) {
         if (!botIntent) {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';
         }
-        const eventTypeAtCapture = leadDataObj.eventType || leadEventTypeRef.current || 'nuevo_lead';
+        const eventTypeAtCapture = isAppointmentTurn ? 'cita_confirmada' : (leadDataObj?.eventType || leadEventTypeRef.current || 'nuevo_lead');
         const historySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
 
         if (leadSaveTimerRef.current) {
@@ -619,15 +614,23 @@ export default function App() {
           leadSaveTimerRef.current = null;
         }
 
-        saveLead({
+        const mergedLead = {
           id: sessionIdRef.current,
-          ...leadDataObj,
-          type: 'ai_lead_capture',
+          ...(leadDataObj || {}),
+          nombre: citaName || leadDataObj?.nombre || '',
+          telefono: citaPhone || leadDataObj?.telefono || '',
+          vehiculoInteres: citaInterest || leadDataObj?.vehiculoInteres || '',
+          agendo_cita: isAppointmentTurn ? 'Si' : (leadDataObj?.agendo_cita || 'No'),
+          estadoLead: isAppointmentTurn ? 'Cita Agendada' : (leadDataObj?.estadoLead || 'Seguimiento'),
+          fecha_cita: appointmentDate || leadDataObj?.fecha_cita || '',
+          notas: appointmentNotes || leadDataObj?.notas || '',
+          type: isAppointmentTurn ? 'ai_appointment_confirmation' : 'ai_lead_capture',
           eventType: eventTypeAtCapture,
           fullText: responseText,
           conversationHistory: historySnapshot
-        });
+        };
 
+        saveLead(mergedLead);
         leadEventTypeRef.current = 'actualizacion';
       }
 

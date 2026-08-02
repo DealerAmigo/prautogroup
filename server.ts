@@ -171,7 +171,8 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
         ["appointment", "ai_appointment_confirmation", "appointment_booking_form"].includes(lead.type) ||
         Boolean(fechaCitaVal && fechaCitaVal.trim() !== "");
 
-      const agendoCitaVal = isAgendoCita ? "Si" : "No";
+      const agendoCitaVal = isAgendoCita ? "Si" : (lead.agendo_cita === "Si" || lead.agendo_cita === "Sí" ? "Si" : "No");
+      const estadoLeadVal = isAgendoCita ? "Cita Agendada" : (lead.estadoLead || "Seguimiento");
 
       let fuenteVal = lead.source || lead.fuente || "Web Chat";
       if (fuenteVal === "web_chat" || fuenteVal === "chat" || fuenteVal === "web") {
@@ -180,13 +181,18 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
         fuenteVal = "missed_call";
       }
 
+      // Ensure consistent lead ID using provided id or clean phone number
+      const rawPhone = lead.telefono || lead.phone || "";
+      const cleanPhone = String(rawPhone).replace(/\D/g, "");
+      const leadId = lead.id || (cleanPhone ? `lead_${cleanPhone}` : "");
+
       // Map lead data to the exact names expected by the GAS script
       const payload = {
         action: "saveLead",
         _token: proxyKey,
         proxyKey: proxyKey,
         sheetId: "1nUrfRkkjXWcXgp68i17htYXcHukI4i4FKCsAHyaRyg0",
-        id: lead.id || "",
+        id: leadId,
         nombre: lead.nombre || lead.name || "",
         telefono: lead.telefono || lead.phone || "",
         email: lead.email || "",
@@ -201,15 +207,15 @@ const INVENTORY_CACHE_MS = 5 * 60 * 1000; // 5 minutos de cache
         tradeModelo: lead.tradeModelo || "",
         estadoTrade: lead.estadoTrade || "",
         consentimiento: consentVal,
-        resumenIA: lead.fullText || lead.resumenIA || "",
-        estadoLead: lead.estadoLead || "Nuevo",
+        resumenIA: lead.resumenIA || lead.resumen || lead.fullText || "",
+        estadoLead: estadoLeadVal,
         fuente: fuenteVal,
         agendo_cita: agendoCitaVal,
         fecha_cita: fechaCitaVal,
         notas: lead.notas || lead.notes || lead.content || "",
-        eventType: lead.eventType || "nuevo_lead",
+        eventType: isAgendoCita ? "cita_confirmada" : (lead.eventType || "nuevo_lead"),
         metodoPago: lead.metodoPago || "",
-        calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com",
+        calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com",
         handoffUrgente: lead.handoffUrgente || false,
         conversationHistory: lead.conversationHistory || []
       };
