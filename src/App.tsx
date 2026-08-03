@@ -467,7 +467,7 @@ export default function App() {
           } else if (call.name === 'schedule_appointment') {
             const args = call.args as AppointmentDetails;
             try {
-              await createCalendarEvent(args);
+              // Frontend event creation removed; now handled purely by backend (server.ts)
               userMsg.intent = 'Cita';
               toolResults.push({ name: call.name, result: { success: true, message: "Cita agendada exitosamente." } });
             } catch (err: any) {
@@ -546,16 +546,25 @@ export default function App() {
         .replace(/HANDOFF_URGENTE:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
         .replace(/NUDGES:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
         .replace(/MOSTRAR_VEHICULO:[\s\S]*?(?=\n[A-Z_]+:|$)/g, "")
-        .replace(/LEAD_DATA:\s*```(?:json)?[\s\S]*?```/gi, "")
-        .replace(/LEAD_DATA:\s*\{[\s\S]*?\}/gs, "")
-        .replace(/LEAD_DATA:.*$/gm, "")
-        .replace(/```(?:json)?\s*\{[\s\S]*?\}\s*```/gi, "")
-        .replace(/\{[\s\S]*?"(?:nombre|telefono|vehiculoInteres|eventType)"[\s\S]*?\}/gi, "")
+        .replace(/LEAD_DATA:[\s\S]*/gi, "")
         .replace(/CITA_CONFIRMADA:.*$/gm, "")
         .replace(/HANDOFF_URGENTE:.*$/gm, "")
         .replace(/NUDGES:.*$/gm, "")
         .replace(/MOSTRAR_VEHICULO:.*$/gm, "")
-        .trim();
+        .replace(/```(?:json)?[\s\S]*?```/gi, "");
+
+      // Remove any standalone JSON object block {...} that contains lead attributes
+      responseText = responseText.replace(/\{[\s\S]*?\}/g, (match) => {
+        if (/nombre|telefono|email|vehiculo|cita|resumen|eventType|agendo_cita/i.test(match)) {
+          return "";
+        }
+        try {
+          JSON.parse(match);
+          return "";
+        } catch {
+          return match;
+        }
+      }).trim();
 
       let apptData: any = null;
       let isAppointmentTurn = false;
@@ -581,29 +590,19 @@ export default function App() {
         isAppointmentTurn = true;
         try {
           if (citaDataStr) {
-            const fields = citaDataStr.split('|').map(s => s.trim());
+            const fields = citaDataStr.split('|');
             if (fields.length >= 6) {
               citaName = fields[0] || '';
               citaPhone = fields[1] || '';
               citaInterest = fields[3] || '';
               appointmentDate = fields[4] || '';
               appointmentNotes = fields[5] || '';
-            } else if (fields.length === 5) {
+            } else {
               citaName = fields[0] || '';
               citaPhone = fields[1] || '';
-              if (/^\$?[\d,]+/.test(fields[2]) || /pronto|credito|budget/i.test(fields[2])) {
-                citaInterest = fields[3] || '';
-                appointmentDate = fields[4] || '';
-              } else {
-                citaInterest = fields[2] || '';
-                appointmentDate = fields[3] || '';
-                appointmentNotes = fields[4] || '';
-              }
-            } else if (fields.length === 4) {
-              citaName = fields[0] || '';
-              citaPhone = fields[1] || '';
-              citaInterest = fields[2] || '';
-              appointmentDate = fields[3] || '';
+              citaInterest = fields[3] || '';
+              appointmentNotes = fields[4] || '';
+              appointmentDate = fields[4] || ''; // Fallback
             }
           }
 
@@ -620,14 +619,14 @@ export default function App() {
           };
 
           // Crear el evento de calendario explícitamente al confirmar cita
-          createCalendarEvent({
-            customerName: citaName || leadDataObj?.nombre || 'Cliente GT Auto Imports',
-            date: appointmentDate,
-            time: appointmentDate,
-            interest: citaInterest || leadDataObj?.vehiculoInteres || 'Consulta / Test Drive',
-            phone: citaPhone || leadDataObj?.telefono || '',
-            email: leadDataObj?.email || ''
-          }).catch(err => console.warn("[Calendar] Direct creation skipped/failed:", err));
+//          createCalendarEvent({
+//            customerName: citaName || leadDataObj?.nombre || 'Cliente GT Auto Imports',
+//            date: appointmentDate,
+//            time: appointmentDate,
+//            interest: citaInterest || leadDataObj?.vehiculoInteres || 'Consulta / Test Drive',
+//            phone: citaPhone || leadDataObj?.telefono || '',
+//            email: leadDataObj?.email || ''
+//          }).catch(err => console.warn("[Calendar] Direct creation skipped/failed:", err));
 
           leadEventTypeRef.current = 'actualizacion';
         } catch (e) {
@@ -673,7 +672,7 @@ export default function App() {
           eventType: eventTypeAtCapture,
           fullText: responseText,
           conversationHistory: historySnapshot,
-          calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd8bbf5c721bbf22a27a81096fa4f81023c7f999973801f9b3e1efed15@group.calendar.google.com"
+          calendarId: process.env.GOOGLE_CALENDAR_ID || "1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com"
         };
 
         saveLead(mergedLead);
@@ -716,12 +715,15 @@ export default function App() {
       setNudgePool(freshNudges);
       if (freshNudges.length > 0) armIdleTimer();
     } catch (error: any) {
-      console.error("Gemini Error:", error);
-      const errorMessage = error?.message || "Lo siento, tuve un pequeño inconveniente.";
+      console.error("Chat Error:", error);
+      const isFetchError = error?.message === 'Failed to fetch' || (typeof error?.message === 'string' && error.message.includes('fetch'));
+      const friendlyMessage = isFetchError 
+        ? "Disculpe, tuvimos una interrupción momentánea de conexión. Por favor reintente enviar su mensaje." 
+        : (error?.message || "Lo siento, tuve un pequeño inconveniente. Por favor reintente su mensaje.");
       setMessages(prev => [...prev, {
         id: Math.random().toString(36).substring(2, 11),
         role: 'assistant',
-        content: `Error: ${errorMessage}. ¿Podrías repetirme eso?`,
+        content: friendlyMessage,
         timestamp: Date.now(),
       }]);
     } finally {

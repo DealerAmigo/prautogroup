@@ -1,16 +1,5 @@
-import { getAccessToken } from './googleAuth';
-
-export interface AppointmentDetails {
-  customerName: string;
-  date: string; // YYYY-MM-DD or full date/time string
-  time: string; // HH:mm or 10:00 AM/PM
-  interest: string;
-  phone?: string;
-  email?: string;
-  calendarId?: string;
-}
-
-function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO: string; endISO: string } {
+import { google } from "googleapis";
+export function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO: string; endISO: string } {
   let year = new Date().getFullYear();
   let month = new Date().getMonth();
   let day = new Date().getDate() + 1; // Default tomorrow
@@ -35,7 +24,6 @@ function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO:
       month = parseInt(altMatch[2], 10) - 1;
       year = parseInt(altMatch[3], 10);
     } else {
-      // Check for Spanish month names e.g. "5 de agosto" or "agosto 5"
       for (const [mName, mIdx] of Object.entries(monthsEs)) {
         if (combined.includes(mName)) {
           month = mIdx;
@@ -58,11 +46,9 @@ function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO:
     }
   }
 
-  // Parse hours & minutes from timeStr or dateStr
   let hours = 10;
   let minutes = 0;
   const combinedTime = `${dateStr} ${timeStr}`;
-
   const isPM = /pm/i.test(combinedTime);
   const isAM = /am/i.test(combinedTime);
 
@@ -97,62 +83,57 @@ function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO:
   };
 }
 
-export async function createCalendarEvent(details: AppointmentDetails, providedToken?: string) {
-  // Use provided token or fetch from googleAuth cache
-  const token = providedToken || await getAccessToken();
-  
-  if (!token) {
-    console.warn("Calendar sync skipped: No access token available.");
-    return { skipped: true, message: "Sync skipped (Auth required)" };
+export async function createServerSideCalendarEvent(lead: any, calendarId: string) {
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  const clientEmail = process.env.GOOGLE_CLIENT_EMAIL || "dealeramigobot@dealeramigo.iam.gserviceaccount.com";
+
+  if (!privateKey) {
+    console.warn("Skipping Server-Side Calendar creation: GOOGLE_PRIVATE_KEY is not defined in Secrets.");
+    return;
   }
 
-  const { startISO, endISO } = parseAppointmentDateTime(details.date, details.time);
+  const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
 
-  const descriptionParts = [
-    `Cliente: ${details.customerName}`,
-    details.phone ? `Teléfono: ${details.phone}` : '',
-    details.email ? `Email: ${details.email}` : '',
-    `Interesado en: ${details.interest || 'Prueba de manejo'}`,
-    `Creado por Asistente de Ventas Camilo (GT Auto Imports)`
-  ].filter(Boolean);
+  try {
+    const auth = new google.auth.JWT({
+      email: clientEmail,
+      key: formattedPrivateKey,
+      scopes: ["https://www.googleapis.com/auth/calendar.events"]
+    });
 
-  const event = {
-    summary: `Cita GT Auto Imports: ${details.customerName} - ${details.interest || 'Consulta Auto'}`,
-    description: descriptionParts.join('\n'),
-    location: 'PR-2 km 26.1, Dorado, Puerto Rico 00646',
-    start: {
-      dateTime: startISO,
-      timeZone: 'America/Puerto_Rico',
-    },
-    end: {
-      dateTime: endISO,
-      timeZone: 'America/Puerto_Rico',
-    },
-    reminders: {
-      useDefault: true
-    }
-  };
+    const calendar = google.calendar({ version: "v3", auth });
+    const appointmentDate = lead.fecha_cita || lead.appointmentDate || lead.date || "";
+    const { startISO, endISO } = parseAppointmentDateTime(appointmentDate, appointmentDate);
 
-  // Target shared dealer calendar strictly
-  const sharedCalendarId = '1884c8cd6a523a871eb205236425adc8df7a024735916cd1aa5331857befd505@group.calendar.google.com';
-  const targetCalendarId = details.calendarId || process.env.GOOGLE_CALENDAR_ID || sharedCalendarId;
+    const descriptionParts = [
+      `Cliente: ${lead.nombre || lead.name || 'Cliente'}`,
+      lead.telefono || lead.phone ? `Teléfono: ${lead.telefono || lead.phone}` : '',
+      lead.email ? `Email: ${lead.email}` : '',
+      `Interesado en: ${lead.vehiculoInteres || lead.vehicleInterest || lead.vehiculo_interes || 'Prueba de manejo'}`,
+      `Creado por Asistente de Ventas Camilo (Backend GT Auto Imports)`
+    ].filter(Boolean);
 
-  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(targetCalendarId)}/events`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(event),
-  });
+    const event = {
+      summary: `Cita GT Auto Imports: ${lead.nombre || lead.name || 'Cliente'} - ${lead.vehiculoInteres || lead.vehicleInterest || lead.vehiculo_interes || 'Consulta'}`,
+      description: descriptionParts.join('\n'),
+      location: 'PR-2 km 26.1, Dorado, Puerto Rico 00646',
+      start: {
+        dateTime: startISO,
+        timeZone: 'America/Puerto_Rico',
+      },
+      end: {
+        dateTime: endISO,
+        timeZone: 'America/Puerto_Rico',
+      }
+    };
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    const errMsg = error.error?.message || response.statusText;
-    console.error(`Calendar API call to ${targetCalendarId} failed (${response.status}):`, errMsg);
-    throw new Error(`Calendar API error on ${targetCalendarId}: ${errMsg}`);
+    const res = await calendar.events.insert({
+      calendarId: calendarId,
+      requestBody: event,
+    });
+
+    console.log(`[Server] Calendar event created successfully on calendar ${calendarId}:`, res.data.htmlLink);
+  } catch (error) {
+    console.error("[Server] Error creating calendar event:", error);
   }
-
-  console.log(`Calendar event created successfully on calendar ${targetCalendarId}.`);
-  return response.json();
 }

@@ -20,7 +20,6 @@
 
 import { Router } from "express";
 import { processCamiloMessage } from "./ai/ai";
-import { parseAppointmentDateTime } from "./src/lib/calendar";
 import { createCalendarEvent } from "./src/lib/calendar";
 
 const router = Router();
@@ -208,18 +207,6 @@ async function sendLeadToGAS(lead: Record<string, any>) {
   const agendoCitaVal = isAgendoCita ? "Si" : (lead.agendo_cita === "Si" || lead.agendo_cita === "Sí" ? "Si" : "No");
   const estadoLeadVal = isAgendoCita ? "Cita Agendada" : (lead.estadoLead || "Seguimiento");
 
-  let startISO = lead.startISO || "";
-  let endISO = lead.endISO || "";
-  if (isAgendoCita && fechaCitaVal && (!startISO || !endISO)) {
-    try {
-      const dates = parseAppointmentDateTime(fechaCitaVal, "");
-      startISO = dates.startISO;
-      endISO = dates.endISO;
-    } catch (e) {
-      console.warn("[TwilioAgent] Could not parse appointment date:", e);
-    }
-  }
-
   let fuenteVal = lead.fuente || "missed_call";
   if (fuenteVal === "missed_call_sms") {
     fuenteVal = "missed_call";
@@ -256,11 +243,6 @@ async function sendLeadToGAS(lead: Record<string, any>) {
     fuente: fuenteVal,
     agendo_cita: agendoCitaVal,
     fecha_cita: fechaCitaVal,
-    fecha_cita_start_iso: startISO,
-    fecha_cita_end_iso: endISO,
-    startISO: startISO,
-    endISO: endISO,
-    timeZone: "America/Puerto_Rico",
     notas: lead.notas || "",
     eventType: isAgendoCita ? "cita_confirmada" : (lead.eventType || "nuevo_lead"),
     metodoPago: lead.metodoPago || "",

@@ -95,23 +95,22 @@ FASE 2 — IDENTIDAD, CONTACTO Y SOLICITUD DE CONSENTIMIENTO SMS:
    - Una vez el cliente responda ("Sí", "Acepto", "Dale", "No", etc.), actualiza el campo "consentimiento" a "Si" o "No" en LEAD_DATA y prosigue con FASE 3 (calificación de crédito y fecha de cita).
    - Si el cliente no responde directamente que sí o duda, puedes aclararle tranquilamente que es para recordatorios de su cita, pero no insistas de forma agresiva; guarda "consentimiento":"No" y avanza a FASE 3.
 
-FASE 3 — CALIFICACIÓN FINANCIERA Y COORDINACIÓN DE CITA (TEST DRIVE O LLAMADA):
+FASE 3 — CALIFICACIÓN FINANCIERA Y PROPUESTA DE CITA:
 - Recuerda ir paso a paso, UNA SOLA PREGUNTA A LA VEZ:
   1. Crédito: ¿Cómo tienes el crédito? (Excelente, bueno, regular o comenzando).
   2. Pronto: ¿Tienes algún pronto estimado para dar?
   3. Trade-in (OPCIONAL): Pregunta brevemente si tiene vehículo en trade-in. Si dice que no tiene o pasa de tema, NO insistas ni te detengas por esto — avanza de inmediato a la cita.
-  4. Día y hora de la cita (ya sea para prueba de manejo presencial en Dorado o para llamada de orientación).
+  4. PROPONER DÍA Y HORA: Propón o acuerda un día y hora para la cita (ej. "Excelente, Ismael. Lo reservamos para este miércoles a las 10:00 a.m. en nuestro concesionario en Dorado. ¿Qué le parece?"). NUNCA asumas que la cita está confirmada (ni envíes CITA_CONFIRMADA) en el mismo mensaje que propones la hora. SIEMPRE debes terminar con una pregunta de validación (ej. "¿Qué le parece?", "¿Le funciona esa hora?") y ESPERAR a que el cliente confirme.
 - REGLA DE SOBRERESERVA (DOUBLE BOOKING PERMITIDO): En GT Auto Imports PERMITIMOS MÚLTIPLES CITAS A LA MISMA HORA (Double Booking) porque contamos con múltiples vendedores y especialistas en el concesionario. SIEMPRE acepta la hora elegida por el cliente (lunes a sábado de 9am a 6pm).
-- REGLA DE EDICIÓN Y ACTUALIZACIÓN CONTINUA: Conforme el cliente hable de la intención de cita, días, horas preferidas, pronto o trade-in, INCLUYE SIEMPRE un tag LEAD_DATA actualizado en cada turno con la información más reciente ("fecha_cita", "notas", "tienePronto", "tieneTradeIn", etc.) y "eventType":"actualizacion" o "intencion_cita". En el campo "resumenIA" (o "resumen") de LEAD_DATA, guarda un resumen conciso de lo que surja al agendar la llamada de orientación o la prueba de manejo.
+- REGLA DE EDICIÓN Y ACTUALIZACIÓN CONTINUA: Conforme el cliente hable de la intención de cita, días, horas preferidas, pronto o trade-in, INCLUYE SIEMPRE un tag LEAD_DATA actualizado en cada turno con la información más reciente ("fecha_cita", "notas", "tienePronto", "tieneTradeIn", etc.) y "eventType":"actualizacion" o "intencion_cita". En el campo "resumenIA" (o "resumen") de LEAD_DATA, guarda un resumen conciso de lo que surja.
 
-FASE 4 — SOLICITUD DE EMAIL Y CONFIRMACIÓN FINAL DE CITA:
-- Esta fase se activa cuando ya se acordó el día y la hora de la cita (para test drive o llamada).
-- Pide el correo electrónico (email) del cliente como último paso para enviarle la confirmación escrita de la cita y la tarjeta de presentación con los documentos requeridos.
-- Una vez recibido o si el cliente lo proporciona, confirma la cita con calidez y comunica los documentos requeridos (Licencia de conducir, Seguro Social, comprobante de residencia, comprobante de ingresos).
-- OBLIGATORIO incluir AMBOS tags al final del mensaje en este turno:
+FASE 4 — CONFIRMACIÓN DE CITA (CREACIÓN DEL EVENTO Y SOLICITUD DE EMAIL):
+- Esta fase se activa ÚNICAMENTE cuando el cliente RESPONDE AFIRMATIVAMENTE (ej. "sí", "perfecto", "dale") a la fecha y hora propuesta.
+- En este turno, CONFIRMA LA CITA al cliente y solicita su correo electrónico (email) para enviarle los detalles. (Ej. "¡Perfecto! Ya quedó agendada. Por favor bríndeme su email para enviarle la confirmación y la lista de documentos a traer.").
+- OBLIGATORIO incluir AMBOS tags al final del mensaje EN ESTE EXACTO TURNO:
   1. CITA_CONFIRMADA: [Nombre]|[Teléfono]|[Presupuesto o método de pago]|[Vehículo]|[Fecha y hora exacta acordada]|[Notas breves]
-  2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", "fecha_cita":[Fecha y hora], "email":"[Correo]", y "consentimiento":("Si" o "No" según haya respondido).
-- El tag CITA_CONFIRMADA es el que activa que la cita se agende de verdad (crea el evento en Calendar) — inclúyelo únicamente al momento de confirmar la cita por primera vez.
+  2. LEAD_DATA con "agendo_cita":true, "eventType":"cita_confirmada", "fecha_cita":[Fecha y hora], "consentimiento":("Si" o "No" según haya respondido). NOTA: Si aún no tienes el email, puedes dejarlo vacío.
+- El tag CITA_CONFIRMADA es el que activa que la cita se agende de verdad (crea el evento en Calendar y la línea en Google Sheets) — inclúyelo únicamente aquí, al momento de confirmar que el cliente aceptó la hora propuesta.
 
 FASE 5 — CITA YA CONFIRMADA EN HISTORIAL (POST-CONFIRMACIÓN Y ATENCIÓN CONTINUA):
 - Aplica si en el historial de la conversación la cita YA FUE CONFIRMADA previamente (ya existe una confirmación previa de fecha y hora).
@@ -276,25 +275,9 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
   try {
     let response = "";
 
-    // 1. Intentar primero con Claude si está disponible
-    if (anthropic) {
-      try {
-        console.log("[Camilo] Procesando mensaje con Claude...");
-        response = await callClaude(buildUserPrompt());
-      } catch (claudeErr: any) {
-        const errStr = claudeErr?.message || String(claudeErr);
-        if (errStr.includes("credit balance") || errStr.includes("400") || errStr.includes("401") || errStr.includes("429")) {
-          console.log("[Camilo] Claude API no disponible (cuota/saldo), utilizando Gemini como motor principal.");
-        } else {
-          console.log("[Camilo] Claude no estuvo disponible, conmutando a Gemini.");
-        }
-        response = "";
-      }
-    }
-
-    // 2. Fallback a Gemini si Claude no estuvo disponible o falló
-    if (!response && gemini) {
-      console.log("[Camilo] Intentando fallback con Gemini Flash...");
+    // 1. Intentar primero con Gemini como motor principal (más rápido, económico e integrado)
+    if (gemini) {
+      console.log("[Camilo] Procesando mensaje con Gemini Flash como motor principal...");
       const geminiModels = ["gemini-3.6-flash", "gemini-flash-latest", "gemini-3.1-pro-preview"];
       for (const gm of geminiModels) {
         try {
@@ -316,6 +299,16 @@ Mensaje más reciente del cliente: "${message}"${retryNudge ? `\n\n${retryNudge}
             console.warn(`[Camilo] Gemini model ${gm} falló:`, errMsg);
           }
         }
+      }
+    }
+
+    // 2. Fallback a Claude únicamente si Gemini no produjo respuesta y Anthropic está disponible
+    if (!response && anthropic) {
+      try {
+        console.log("[Camilo] Intentando fallback con Claude...");
+        response = await callClaude(buildUserPrompt());
+      } catch (claudeErr: any) {
+        console.log("[Camilo] Claude API no disponible (cuota/saldo o error).");
       }
     }
 

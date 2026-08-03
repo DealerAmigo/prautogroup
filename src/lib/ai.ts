@@ -31,61 +31,70 @@ export class DealerChat {
   }
 
   async sendMessage(message: string) {
-    try {
-      // Enviamos el mensaje al proxy local que luego va al Apps Script (Claude)
-      const response = await fetch("/api/chat", {
-        method: "POST", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: message || "CONTINUE",
-          inventory: this.inventory,
-          history: this.history.map(m => {
-            const role = m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user';
-            let content = "";
-            if (m.parts && Array.isArray(m.parts)) {
-              content = m.parts.map((p: any) => p ? (p.text || "") : "").join(' ');
-            } else if (m.content) {
-              content = m.content;
-            } else if (typeof m === 'string') {
-              content = m;
-            }
-            return { role, content };
+    let attempts = 0;
+    const maxAttempts = 3;
+    let lastError: any = null;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST", 
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: message || "CONTINUE",
+            inventory: this.inventory,
+            history: this.history.map(m => {
+              const role = m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user';
+              let content = "";
+              if (m.parts && Array.isArray(m.parts)) {
+                content = m.parts.map((p: any) => p ? (p.text || "") : "").join(' ');
+              } else if (m.content) {
+                content = m.content;
+              } else if (typeof m === 'string') {
+                content = m;
+              }
+              return { role, content };
+            })
           })
-        })
-      });
+        });
 
-      if (!response.ok) {
-        let errMsg = `Error en el servidor de chat: ${response.status}`;
-        try {
-          const errData = await response.json();
-          if (errData && errData.error) {
-            errMsg = `${errData.error}`;
-          }
-        } catch (_) {}
-        throw new Error(errMsg);
-      }
-
-      const data = await response.json();
-      const responseText = data.text || "";
-      
-      // Actualizar historial local para la UI -- guardamos el texto YA
-      // LIMPIO de tags, nunca el crudo, para no envenenar el contexto que
-      // se le manda a Claude en los proximos turnos.
-      if (message) {
-        this.history.push({ role: "user", parts: [{ text: message }] });
-      }
-      this.history.push({ role: "model", parts: [{ text: stripTagsForHistory(responseText) }] });
-
-      return {
-        response: {
-          text: () => responseText,
-          functionCalls: () => [] 
+        if (!response.ok) {
+          let errMsg = `Error en el servidor de chat: ${response.status}`;
+          try {
+            const errData = await response.json();
+            if (errData && errData.error) {
+              errMsg = `${errData.error}`;
+            }
+          } catch (_) {}
+          throw new Error(errMsg);
         }
-      };
-    } catch (error) {
-      console.error("Chat Proxy Error:", error);
-      throw error;
+
+        const data = await response.json();
+        const responseText = data.text || "";
+        
+        if (message) {
+          this.history.push({ role: "user", parts: [{ text: message }] });
+        }
+        this.history.push({ role: "model", parts: [{ text: stripTagsForHistory(responseText) }] });
+
+        return {
+          response: {
+            text: () => responseText,
+            functionCalls: () => [] 
+          }
+        };
+      } catch (error: any) {
+        lastError = error;
+        console.warn(`[Chat Proxy] Intento ${attempts}/${maxAttempts} falló:`, error.message || error);
+        if (attempts < maxAttempts) {
+          await new Promise(res => setTimeout(res, 1000));
+        }
+      }
     }
+
+    console.error("Chat Proxy Error tras varios intentos:", lastError);
+    throw lastError;
   }
 
   addFunctionResponse(name: string, result: any) {

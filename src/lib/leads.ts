@@ -73,14 +73,14 @@ export async function saveLead(leadData: any) {
         }
 
         // Crear evento en Google Calendar
-        await createCalendarEvent({
-          customerName: data.name || data.nombre || 'Cliente GT Auto Imports',
-          date: datePart,
-          time: timePart,
-          interest: interestStr,
-          phone: data.phone || data.telefono,
-          email: data.email
-        }, token).catch(e => console.error("Error creating Google Calendar event:", e));
+//        await createCalendarEvent({
+//          customerName: data.name || data.nombre || 'Cliente GT Auto Imports',
+//          date: datePart,
+//          time: timePart,
+//          interest: interestStr,
+//          phone: data.phone || data.telefono,
+//          email: data.email
+//        }, token).catch(e => console.error("Error creating Google Calendar event:", e));
 
         // Enviar correo de confirmación al cliente si tiene email
         if (data.email) {

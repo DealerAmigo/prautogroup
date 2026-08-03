@@ -59,13 +59,13 @@ export default function BookingForm({ onSuccess }: BookingFormProps) {
 
       // Try integration with Google Calendar if possible
       try {
-        const { createCalendarEvent } = await import('../lib/calendar');
-        await createCalendarEvent({
-          customerName: formData.name,
-          date: formData.date,
-          time: formData.time,
-          interest: formData.notes || 'Consulta General'
-        });
+//        const { createCalendarEvent } = await import('../lib/calendar');
+//        await createCalendarEvent({
+//          customerName: formData.name,
+//          date: formData.date,
+//          time: formData.time,
+//          interest: formData.notes || 'Consulta General'
+//        });
       } catch (calErr) {
         console.warn("Calendar integration skipped or failed:", calErr);
         // We don't fail the whole form if calendar fails
