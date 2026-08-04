@@ -1340,7 +1340,7 @@ export default function App() {
                 rel="noopener noreferrer"
                 className="text-[10px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors"
               >
-                Términos
+                Terms
               </a>
               <div className="h-3 w-[1px] bg-white/20" />
               <a
@@ -1349,7 +1349,7 @@ export default function App() {
                 rel="noopener noreferrer"
                 className="text-[10px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors"
               >
-                Privacidad
+                Privacy
               </a>
             </div>
           </div>
@@ -1611,16 +1611,16 @@ export default function App() {
                 </button>
               </div>
               <div className="flex items-center gap-4">
-                <a href="/terminos-y-condiciones.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.2em] font-black transition-colors">Términos</a>
+                <a href="/terminos-y-condiciones.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.2em] font-black transition-colors">Terms</a>
                 <div className="h-2 w-[1px] bg-white/20" />
-                <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.2em] font-black transition-colors">Privacidad</a>
+                <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.2em] font-black transition-colors">Privacy</a>
               </div>
             </div>
 
             <div className="hidden md:flex items-center gap-4 ml-auto">
-              <a href="/terminos-y-condiciones.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors">Términos</a>
+              <a href="/terminos-y-condiciones.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors">Terms</a>
               <div className="h-3 w-[1px] bg-white/20" />
-              <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors">Privacidad</a>
+              <a href="/privacy-policy.html" target="_blank" rel="noopener noreferrer" className="text-[9px] text-white hover:text-slate-300 uppercase tracking-[0.3em] font-black transition-colors">Privacy</a>
             </div>
           </footer>
         </section>
