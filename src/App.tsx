@@ -1262,9 +1262,15 @@ export default function App() {
                     if (window.innerWidth < 768) setActiveTab('chat');
                   }} 
                   onImageClick={handleImageClick}
-                  onFinanceClick={(v) => {
-                    const messageText = `Me interesa el ${v.year} ${v.make} ${v.model} y sus opciones de financiamiento.`;
-                    handleSend(messageText);
+                    onFinanceClick={(v) => {
+                      window.open('https://gtautopr.com/pre-aprobacion/', '_blank');
+                    }}
+                  onPriceClick={(v) => {
+                    handleSend(`¡Hola! Vi el ${v.year} ${v.make} ${v.model} con precio de $${v.price.toLocaleString()}. ¿Es negociable?`);
+                    if (window.innerWidth < 768) setActiveTab('chat');
+                  }}
+                  onEstClick={(v, estimatedPayment) => {
+                    handleSend(`¡Hola! Me llama la atención el ${v.year} ${v.make} ${v.model} y su pago estimado de $${estimatedPayment}/mo. ¿Qué necesito para ese pago?`);
                     if (window.innerWidth < 768) setActiveTab('chat');
                   }}
                 />
@@ -1531,16 +1537,15 @@ export default function App() {
                       handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model}, cuéntame más.`);
                       setActiveTab('chat');
                     }}
-                    onFinanceClick={(vehicle) => {
-                      handleSend(`Quiero pre-cualificar para el ${vehicle.year} ${vehicle.make} ${vehicle.model}.`);
-                      setActiveTab('chat');
+                    onFinanceClick={(vehicle, estimatedPayment) => {
+                      window.open('https://gtautopr.com/pre-aprobacion/', '_blank');
                     }}
                     onPriceClick={(vehicle) => {
-                      handleSend(`Me interesa comprar el ${vehicle.year} ${vehicle.make} ${vehicle.model} por su precio online de $${vehicle.price.toLocaleString()}.`);
+                      handleSend(`¡Hola! Vi el ${vehicle.year} ${vehicle.make} ${vehicle.model} con precio de $${vehicle.price.toLocaleString()}. ¿Es negociable?`);
                       setActiveTab('chat');
                     }}
                     onEstClick={(vehicle, estimatedPayment) => {
-                      handleSend(`Me gustaría saber más sobre los pagos mensuales estimados de $${estimatedPayment}/mo para el ${vehicle.year} ${vehicle.make} ${vehicle.model}.`);
+                      handleSend(`¡Hola! Me llama la atención el ${vehicle.year} ${vehicle.make} ${vehicle.model} y su pago estimado de $${estimatedPayment}/mo. ¿Qué necesito para ese pago?`);
                       setActiveTab('chat');
                     }}
                   />
@@ -1669,7 +1674,7 @@ export default function App() {
   );
 }
 
-function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string, v?: Vehicle) => void, onFinanceClick?: (v: Vehicle) => void }) {
+function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick, onPriceClick, onEstClick }: { message: ChatMessage, onVehicleClick?: (v: Vehicle) => void, onImageClick?: (url: string, v?: Vehicle) => void, onFinanceClick?: (v: Vehicle) => void, onPriceClick?: (v: Vehicle) => void, onEstClick?: (v: Vehicle, estimatedPayment: number) => void }) {
   const isBot = message.role === 'assistant';
   const hasVehicles = message.vehicles && message.vehicles.length > 0;
   
@@ -1880,12 +1885,26 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
                     </div>
                     
                     <div className="flex justify-between items-center pt-2 border-t border-white/5">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-zinc-400 font-round font-bold uppercase tracking-widest leading-none mb-1.5">Precio Online</span>
-                        <span className="text-lg font-mono font-black text-white tracking-tighter leading-none">${v.price.toLocaleString()}</span>
+                      <div 
+                        className="flex flex-col cursor-pointer group/price hover:bg-white/5 p-1 -m-1 rounded-lg transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPriceClick?.(v);
+                        }}
+                      >
+                        <span className="text-[9px] text-zinc-400 font-round font-bold uppercase tracking-widest leading-none mb-1.5 group-hover/price:text-sky-400 transition-colors">Precio Online</span>
+                        <span className="text-lg font-mono font-black text-white tracking-tighter leading-none group-hover/price:text-sky-400 transition-colors">${v.price.toLocaleString()}</span>
                       </div>
-                      <div className="p-2 bg-sky-500/10 rounded-lg group-hover:bg-sky-500 transition-colors">
-                        <ChevronRight size={18} className="text-sky-400 group-hover:text-white" />
+                      <div 
+                        className="flex flex-col items-end cursor-pointer group/est hover:bg-white/5 p-1 -m-1 rounded-lg transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const estimatedPayment = Math.round((v.price * 1.1) / 72);
+                          onEstClick?.(v, estimatedPayment);
+                        }}
+                      >
+                        <span className="text-[9px] text-sky-400 font-round font-bold uppercase tracking-widest leading-none mb-1.5 group-hover/est:text-emerald-400 transition-colors">Est. Mensual</span>
+                        <span className="text-lg font-mono font-black text-white tracking-tighter leading-none group-hover/est:text-emerald-400 transition-colors">${Math.round((v.price * 1.1) / 72)}/mo*</span>
                       </div>
                     </div>
                     {(v.mpg || v.mileage) && (
@@ -1897,11 +1916,20 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        onFinanceClick?.(v);
+                        if (onFinanceClick) {
+                          onFinanceClick(v);
+                        } else {
+                          window.open('https://gtautopr.com/pre-aprobacion/', '_blank');
+                        }
                       }}
-                      className="mt-1 w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors"
+                      className="mt-2 relative w-full bg-white border-2 border-emerald-400/60 p-2 rounded-xl flex items-center justify-between hover:bg-emerald-50 hover:border-emerald-500 transition-all group/finance shadow-[0_0_10px_rgba(16,185,129,0.2)] overflow-hidden"
                     >
-                      <ShieldCheck size={12} /> Oferta Especial
+                      <div className="absolute inset-0 bg-emerald-400/10 animate-pulse pointer-events-none" />
+                      <div className="flex flex-col items-start text-left pr-2 relative z-10">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-0.5 leading-none">Pre-cualifica Aquí</span>
+                        <span className="text-[8px] text-emerald-700 font-bold leading-tight">SIN INDAGACION DE CREDITO</span>
+                      </div>
+                      <ShieldCheck size={16} className="text-emerald-500 group-hover/finance:scale-110 transition-transform shrink-0 relative z-10" />
                     </button>
                     {v.specialOffer && (
                       <div className="bg-sky-950/30 border border-sky-500/20 px-2 py-1 rounded text-xs text-sky-300 font-bold uppercase tracking-tighter w-fit mt-1">
@@ -2057,12 +2085,12 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
               window.open('https://gtautopr.com/pre-aprobacion/', '_blank');
             }
           }}
-          className="relative w-full mt-2 md:mt-3 bg-white border-2 border-emerald-400/60 p-3 md:p-5 rounded-[1rem] md:rounded-2xl flex items-center justify-between hover:bg-emerald-50 hover:border-emerald-500 transition-all group/finance shadow-[0_0_15px_rgba(16,185,129,0.2)] md:shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+          className="relative w-full mt-2 md:mt-3 bg-white border-2 border-emerald-400/60 p-3 md:p-5 rounded-[1rem] md:rounded-2xl flex items-center justify-between hover:bg-emerald-50 hover:border-emerald-500 transition-all group/finance shadow-[0_0_15px_rgba(16,185,129,0.2)] md:shadow-[0_0_20px_rgba(16,185,129,0.3)] overflow-hidden"
         >
-          <div className="absolute inset-0 rounded-[1rem] md:rounded-2xl ring-2 md:ring-4 ring-emerald-400/30 animate-pulse pointer-events-none" />
+          <div className="absolute inset-0 bg-emerald-400/10 animate-pulse pointer-events-none" />
           <div className="flex flex-col items-start text-left relative z-10 pr-2">
-            <span className="text-sm md:text-lg font-black uppercase tracking-widest text-emerald-600 mb-0.5 md:mb-1 drop-shadow-[0_0_10px_rgba(52,211,153,0.3)]">Oferta de Financiamiento</span>
-            <span className="text-[10px] md:text-sm text-emerald-700 font-bold leading-tight">PRE-CUALIFICA SIN INDAGACION DE CREDITO y obtén más información sobre el proceso</span>
+            <span className="text-sm md:text-lg font-black uppercase tracking-widest text-emerald-600 mb-0.5 md:mb-1 drop-shadow-[0_0_10px_rgba(52,211,153,0.3)]">Pre-cualifica Aquí</span>
+            <span className="text-[10px] md:text-sm text-emerald-700 font-bold leading-tight">SIN INDAGACION DE CREDITO y obtén más información sobre el proceso</span>
           </div>
           <ShieldCheck size={28} className="text-emerald-500 group-hover/finance:scale-110 transition-transform shrink-0 ml-1 md:ml-2 relative z-10" />
         </button>
