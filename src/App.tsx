@@ -644,7 +644,9 @@ export default function App() {
       }
 
       // 2. Save lead data once (instantáneamente al capturar/actualizar datos o agendar cita)
-      if (leadDataObj || isAppointmentTurn) {
+      // Only generate lead ID and save if we actually collected the phone number AND name, avoiding duplicate/ghost leads
+      const hasNombre = !!(citaName || leadDataObj?.nombre);
+      if ((leadDataObj || isAppointmentTurn) && cleanPhoneNum.length >= 7 && hasNombre) {
         if (!botIntent) {
           botIntent = 'Lead Capturado';
           userMsg.intent = 'Lead Capturado';
@@ -1529,8 +1531,16 @@ export default function App() {
                       handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model}, cuéntame más.`);
                       setActiveTab('chat');
                     }}
-                    onFinanceClick={(vehicle, estimatedPayment) => {
-                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} y sus opciones de financiamiento (estimado ${estimatedPayment}/mo).`);
+                    onFinanceClick={(vehicle) => {
+                      handleSend(`Quiero pre-cualificar para el ${vehicle.year} ${vehicle.make} ${vehicle.model}.`);
+                      setActiveTab('chat');
+                    }}
+                    onPriceClick={(vehicle) => {
+                      handleSend(`Me interesa comprar el ${vehicle.year} ${vehicle.make} ${vehicle.model} por su precio online de $${vehicle.price.toLocaleString()}.`);
+                      setActiveTab('chat');
+                    }}
+                    onEstClick={(vehicle, estimatedPayment) => {
+                      handleSend(`Me gustaría saber más sobre los pagos mensuales estimados de $${estimatedPayment}/mo para el ${vehicle.year} ${vehicle.make} ${vehicle.model}.`);
                       setActiveTab('chat');
                     }}
                   />
@@ -1911,7 +1921,7 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
   );
 }
 
-function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGalleryClick }: { vehicle: Vehicle, onImageClick?: (url: string, v?: Vehicle) => void, onChatClick?: (v: Vehicle) => void, onFinanceClick?: (v: Vehicle, estimatedPayment: number) => void, onGalleryClick?: (v: Vehicle) => void }) {
+function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGalleryClick, onPriceClick, onEstClick }: { vehicle: Vehicle, onImageClick?: (url: string, v?: Vehicle) => void, onChatClick?: (v: Vehicle) => void, onFinanceClick?: (v: Vehicle, estimatedPayment: number) => void, onGalleryClick?: (v: Vehicle) => void, onPriceClick?: (v: Vehicle) => void, onEstClick?: (v: Vehicle, estimatedPayment: number) => void }) {
   const estimatedPayment = Math.round((vehicle.price * 1.1) / 72); // Super simple estimate
 
   return (
@@ -1976,10 +1986,16 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
         </div>
 
         <div className="flex items-center justify-between py-1.5 md:py-3 border-y border-white/5">
-          <div className="flex flex-col">
-            <span className="text-[9px] md:text-[10px] uppercase font-black text-zinc-300 tracking-widest mb-1">Precio Online</span>
+          <div 
+            className="flex flex-col cursor-pointer group/price hover:bg-white/5 p-1 -m-1 rounded-lg transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPriceClick?.(vehicle);
+            }}
+          >
+            <span className="text-[9px] md:text-[10px] uppercase font-black text-zinc-300 tracking-widest mb-1 group-hover/price:text-sky-400 transition-colors">Precio Online</span>
             <div className="flex items-center gap-2">
-              <span className="text-xl md:text-3xl font-mono text-white font-black tracking-tighter">
+              <span className="text-xl md:text-3xl font-mono text-white font-black tracking-tighter group-hover/price:text-sky-400 transition-colors">
                 ${vehicle.price.toLocaleString()}
               </span>
               {vehicle.price > 0 && vehicle.price < 25000 && (
@@ -1987,9 +2003,15 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
               )}
             </div>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] md:text-[10px] uppercase font-black text-sky-400 tracking-widest mb-1">Est. Mensual</span>
-            <span className="text-lg md:text-2xl font-mono text-white font-black tracking-tighter">
+          <div 
+            className="flex flex-col items-end cursor-pointer group/est hover:bg-white/5 p-1 -m-1 rounded-lg transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEstClick?.(vehicle, estimatedPayment);
+            }}
+          >
+            <span className="text-[9px] md:text-[10px] uppercase font-black text-sky-400 tracking-widest mb-1 group-hover/est:text-emerald-400 transition-colors">Est. Mensual</span>
+            <span className="text-lg md:text-2xl font-mono text-white font-black tracking-tighter group-hover/est:text-emerald-400 transition-colors">
               ${estimatedPayment}/mo*
             </span>
           </div>
