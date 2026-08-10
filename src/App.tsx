@@ -1386,7 +1386,6 @@ export default function App() {
                     ref={videoRef}
                     controls
                     autoPlay
-                    muted
                     playsInline
                     className="w-full h-full object-cover"
                     poster="/cam1lo.jpg"
