@@ -153,6 +153,7 @@ export default function App() {
   // llamada extra a Claude), listas para usarse si el cliente se queda callado.
   const [nudgePool, setNudgePool] = useState<string[]>([]);
   const idleTimerRef = useRef<any>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const IDLE_NUDGE_MS = 25000;
 
   const handleGalleryClick = (vehicle: Vehicle) => {
@@ -401,6 +402,12 @@ export default function App() {
   useEffect(() => {
     return () => clearIdleTimer();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'inventory' && videoRef.current) {
+      videoRef.current.play().catch(err => console.log('Video autoplay blocked:', err));
+    }
+  }, [activeTab]);
 
   async function handleSend(manualMessage?: string) {
     const textToSubmit = manualMessage || inputText;
@@ -1374,9 +1381,20 @@ export default function App() {
                 <h3 className="text-5xl md:text-7xl font-black italic tracking-tighter uppercase text-white leading-none mb-6">
                   Unidades <br/> <span className="text-sky-400">Certificadas</span>
                 </h3>
-                <p className="text-lg text-zinc-100 font-medium leading-relaxed">
-                  Calidad excepcional garantizada. Cada vehículo en nuestro inventario pasa por una inspección rigurosa de 115 puntos para asegurar tu tranquilidad total.
-                </p>
+                <div className="relative w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-white/10 mt-2 bg-zinc-900/50 aspect-video">
+                  <video 
+                    ref={videoRef}
+                    controls
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    poster="/cam1lo.jpg"
+                  >
+                    <source src="/VIDEO.MP4" type="video/mp4" />
+                    Tu navegador no soporta el elemento de video.
+                  </video>
+                </div>
               </div>
               <div className="flex flex-col gap-4 w-full md:w-auto">
                  <div className="flex gap-3">
