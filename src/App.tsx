@@ -995,7 +995,7 @@ export default function App() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500"></span>
                     </span>
-                    LIVE CHAT
+                    PREGUNTAME
                     <ChevronRight size={16} className="group-hover/btn:translate-x-1 xl:group-hover/btn:translate-x-2 transition-transform" />
                   </button>
                   <button 
@@ -1268,7 +1268,7 @@ export default function App() {
                   }} 
                   onImageClick={handleImageClick}
                   onFinanceClick={(v) => {
-                    const messageText = `Me interesa el ${v.year} ${v.make} ${v.model} y sus opciones de financiamiento.`;
+                    const messageText = `Me interesa el ${v.year} ${v.make} ${v.model} y sus opciones de financiamiento. Quiero pre-cualificar aquí: [Pre-Aprobación](https://gtautopr.com/pre-aprobacion/)`;
                     handleSend(messageText);
                     if (window.innerWidth < 768) setActiveTab('chat');
                   }}
@@ -1547,7 +1547,7 @@ export default function App() {
                       setActiveTab('chat');
                     }}
                     onFinanceClick={(vehicle, estimatedPayment) => {
-                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} y sus opciones de financiamiento (estimado ${estimatedPayment}/mo).`);
+                      handleSend(`Me interesa el ${vehicle.year} ${vehicle.make} ${vehicle.model} y sus opciones de financiamiento (estimado ${estimatedPayment}/mo). Quiero pre-cualificar aquí: [Pre-Aprobación](https://gtautopr.com/pre-aprobacion/)`);
                       setActiveTab('chat');
                     }}
                   />
@@ -1682,6 +1682,10 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
   
   let cleanContent = message.content;
 
+  if (!isBot && cleanContent.includes("Quiero pre-cualificar aquí:")) {
+    cleanContent = cleanContent.replace(/ Quiero pre-cualificar aquí: \[Pre-Aprobación\]\(https:\/\/gtautopr\.com\/pre-aprobacion\/\)/g, "").trim();
+  }
+
   if (isBot && (
     message.content.includes("gtautopr.com/pre-aprobacion") || 
     message.content.includes("pre-aprobacion") || 
@@ -1713,17 +1717,25 @@ function MessageBubble({ message, onVehicleClick, onImageClick, onFinanceClick }
           )}>
             <ReactMarkdown
               components={{
-                a: ({ href, children }) => (
+                a: ({ href, children }) => {
+                  const isPreAprobacion = href?.includes("pre-aprobacion");
+                  return (
                   <a 
                     href={href} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black px-4 py-2.5 my-2 rounded-xl text-sm md:text-base transition-all shadow-lg hover:shadow-emerald-500/30 no-underline cursor-pointer border border-emerald-400/30 active:scale-95"
+                    className={cn(
+                      "inline-flex items-center gap-2 text-white font-black px-4 py-2.5 my-2 rounded-xl text-sm md:text-base transition-all no-underline cursor-pointer active:scale-95",
+                      isPreAprobacion 
+                        ? "bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.4)] border-2 border-emerald-300/50 animate-pulse hover:animate-none scale-105 ml-2"
+                        : "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-lg hover:shadow-emerald-500/30 border border-emerald-400/30"
+                    )}
                   >
+                    {isPreAprobacion && <ShieldCheck size={18} className="text-white" />}
                     <span>{children}</span>
                     <span className="text-xs">↗</span>
                   </a>
-                ),
+                )},
                 img: ({ src, alt }) => (
                   <span 
                     className="block my-6 rounded-2xl overflow-hidden border border-white/10 shadow-2xl cursor-pointer hover:border-sky-500/50 transition-all group relative max-w-sm"
@@ -1992,9 +2004,15 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
           </p>
         </div>
 
-        <div className="flex items-center justify-between py-1.5 md:py-3 border-y border-white/5">
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onFinanceClick) onFinanceClick(vehicle, estimatedPayment);
+          }}
+          className="flex items-center justify-between py-2 md:py-3 px-3 md:px-4 bg-sky-500/5 border border-sky-500/20 rounded-xl cursor-pointer hover:bg-sky-500/10 transition-all group/price shadow-[0_0_20px_rgba(56,189,248,0.1)] hover:shadow-[0_0_30px_rgba(56,189,248,0.2)]"
+        >
           <div className="flex flex-col">
-            <span className="text-[9px] md:text-[10px] uppercase font-black text-zinc-300 tracking-widest mb-1">Precio Online</span>
+            <span className="text-[9px] md:text-[10px] uppercase font-black text-sky-400 tracking-widest mb-1">Precio Online</span>
             <div className="flex items-center gap-2">
               <span className="text-xl md:text-3xl font-mono text-white font-black tracking-tighter">
                 ${vehicle.price.toLocaleString()}
@@ -2071,7 +2089,7 @@ function VehicleCard({ vehicle, onImageClick, onChatClick, onFinanceClick, onGal
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500"></span>
             </span>
-            LIVE CHAT
+            PREGUNTAME
             <ChevronRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
           </button>
           <button 
