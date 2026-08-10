@@ -20,7 +20,7 @@
 
 import { Router } from "express";
 import { processCamiloMessage } from "./ai/ai";
-import { createCalendarEvent } from "./src/lib/calendar";
+import { createServerSideCalendarEvent } from "./server_helpers";
 
 const router = Router();
 
@@ -402,12 +402,11 @@ router.post("/sms", async (req, res) => {
 
       if (citaConfirmada) {
         try {
-          await createCalendarEvent({
-            customerName: parts[0] || leadData?.nombre || 'Cliente Twilio',
-            date: parts[4] || leadData?.fecha_cita || '',
-            time: parts[4] || leadData?.fecha_cita || '',
-            interest: parts[3] || leadData?.vehiculoInteres || 'Consulta / Test Drive',
-            phone: from
+          await createServerSideCalendarEvent({
+            nombre: parts[0] || leadData?.nombre || 'Cliente Twilio',
+            fecha_cita: parts[4] || leadData?.fecha_cita || '',
+            vehiculoInteres: parts[3] || leadData?.vehiculoInteres || 'Consulta / Test Drive',
+            telefono: from
           });
         } catch (calErr) {
           console.warn("[TwilioAgent] Error creando evento en Google Calendar:", calErr);

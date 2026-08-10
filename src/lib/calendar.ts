@@ -61,10 +61,10 @@ function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO:
   // Parse hours & minutes from timeStr or dateStr
   let hours = 10;
   let minutes = 0;
-  const combinedTime = `${dateStr} ${timeStr}`;
+  const combinedTime = `${dateStr} ${timeStr}`.toLowerCase();
 
-  const isPM = /pm/i.test(combinedTime);
-  const isAM = /am/i.test(combinedTime);
+  const isPM = /pm|tarde|noche/i.test(combinedTime);
+  const isAM = /am|mañana|madrugada/i.test(combinedTime);
 
   const timeMatch = combinedTime.match(/(\d{1,2}):(\d{2})/);
   if (timeMatch) {
@@ -72,12 +72,20 @@ function parseAppointmentDateTime(dateStr: string, timeStr: string): { startISO:
     minutes = parseInt(timeMatch[2], 10);
     if (isPM && hours < 12) hours += 12;
     if (isAM && hours === 12) hours = 0;
+    if (!isPM && !isAM && hours >= 1 && hours <= 7) hours += 12; // Default 1..7 to PM for dealer hours
   } else {
-    const hourOnlyMatch = combinedTime.match(/(\d{1,2})\s*(am|pm)/i);
+    const hourOnlyMatch = combinedTime.match(/(\d{1,2})\s*(am|pm|tarde|mañana)/i);
     if (hourOnlyMatch) {
       hours = parseInt(hourOnlyMatch[1], 10);
-      if (hourOnlyMatch[2].toLowerCase() === 'pm' && hours < 12) hours += 12;
-      if (hourOnlyMatch[2].toLowerCase() === 'am' && hours === 12) hours = 0;
+      const indicator = hourOnlyMatch[2].toLowerCase();
+      if ((indicator === 'pm' || indicator === 'tarde') && hours < 12) hours += 12;
+      if ((indicator === 'am' || indicator === 'mañana') && hours === 12) hours = 0;
+    } else {
+      const simpleHourMatch = combinedTime.match(/(?:a las|las)\s*(\d{1,2})/i) || combinedTime.match(/\b(\d{1,2})\b/);
+      if (simpleHourMatch) {
+        hours = parseInt(simpleHourMatch[1], 10);
+        if (hours >= 1 && hours <= 7) hours += 12; // Default 1..7 to PM
+      }
     }
   }
 
